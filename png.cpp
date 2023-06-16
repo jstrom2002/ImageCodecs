@@ -2,7 +2,7 @@
 #include <assert.h>
 #include <string.h>
 
-namespace PNG
+namespace ImageCodecs
 {
 #ifdef _MSC_VER
 #pragma warning (disable:4127) // conditional expression is constant
