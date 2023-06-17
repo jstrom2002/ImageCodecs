@@ -21,7 +21,7 @@ int main(int argc, char** argv)
 			auto parent = testFile.path().parent_path();
 			auto newName = testFile.path().filename().string();
 			auto ext = testFile.path().extension().string();
-			newName = parent.string() + "\\" + newName.substr(0, newName.rfind(".")) + "_icdTest" + ext;
+			newName = "test\\" + newName.substr(0, newName.rfind(".")) + "_icdTest" + ext;
 			img.write(newName);
 		}
 		catch (std::exception& e)

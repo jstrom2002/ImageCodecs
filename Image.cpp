@@ -10,28 +10,33 @@ namespace ImageCodecs
 		for (auto& c : ext)
 			c = std::tolower(c);
 		if (ext == ".bmp")
-			readBmp(filepath,pixels_,w_,h_,d_);
+			readBmp(filepath,&pixels_,w_,h_,d_);
 		else if (ext == ".dds")
-			readDds(filepath, pixels_, w_, h_, d_);
+			readDds(filepath, &pixels_, w_, h_, d_);
 		else if (ext == ".gif")
-			readGif(filepath, pixels_, w_, h_, d_);
+			readGif(filepath, &pixels_, w_, h_, d_);
 		else if (ext == ".hdr")
-			readHdr(filepath, pixels_, w_, h_, d_);
+			readHdr(filepath, &pixels_, w_, h_, d_);
 		else if (ext == ".jpg" || ext == ".jpeg")
-			readJpg(filepath, pixels_, w_, h_, d_);
+			readJpg(filepath, &pixels_, w_, h_, d_);
 		else if (ext == ".png")
-			readPng(filepath, pixels_, w_, h_, d_);
+			readPng(filepath, &pixels_, w_, h_, d_);
 		else if (ext == ".ppm")
-			readPpm(filepath, pixels_, w_, h_, d_);
+			readPpm(filepath, &pixels_, w_, h_, d_);
 		else if (ext == ".tga")
-			readTga(filepath, pixels_, w_, h_, d_);
-		else if (ext == ".tiff" || ext == ".tif")
-			readTiff(filepath, pixels_, w_, h_, d_);
+			readTga(filepath, &pixels_, w_, h_, d_);
+		else if (ext == ".tif" || ext == ".tiff")
+			readTiff(filepath, &pixels_, w_, h_, d_);
 		else if (ext == ".webp")
-			readWebp(filepath, pixels_, w_, h_, d_);
+			readWebp(filepath, &pixels_, w_, h_, d_);
 		else
 		{
 			throw std::invalid_argument("Cannot parse filetype");
+		}
+
+		if (pixels_ == nullptr)
+		{
+			throw std::exception("Could not read image data");
 		}
 	}
 

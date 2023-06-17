@@ -4,9 +4,16 @@
 #include <fstream>
 #include <filesystem>
 
+#define NV_DDS_NO_GL_SUPPORT
+#include "nv_dds.h"
+
+#define TJE_IMPLEMENTATION
+#include "jpeg_enc.h"
+#include "jpeg_dec.h"
+
 namespace ImageCodecs
 {
-	void readBmp(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
+	void readBmp(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
 	{
 		const int bitDepth = 24; // For now, pixel depths are hardcoded to 8-bit RGB
 		int headerSize = 0;//size of header before pixel array
@@ -131,12 +138,12 @@ namespace ImageCodecs
 		}
 
 		// Output to pixels array.		
-		pixels = new unsigned char[pixels_[0].size() * pixels_.size()];
+		(*pixels) = new unsigned char[pixels_[0].size() * pixels_.size()];
 		for (unsigned int i = 0; i < pixels_.size(); ++i)
 		{
 			for (unsigned int j = 0; j < pixels_[i].size(); ++j)
 			{
-				pixels[i * pixels_[0].size() + j] = pixels_[i][j];
+				(*pixels)[i * pixels_[0].size() + j] = pixels_[i][j];
 			}
 		}
 		pixels_.clear();
@@ -163,42 +170,46 @@ namespace ImageCodecs
 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 		};
 
-		header[18] = w;
+		header[18] = w >> 0;
 		header[19] = w >> 8;
 		header[20] = w >> 16;
 		header[21] = w >> 24;
 
-		header[22] = h;
+		header[22] = h >> 0;
 		header[23] = h >> 8;
 		header[24] = h >> 16;
 		header[25] = h >> 24;
 
-		header[38] = wRes;
+		header[38] = wRes >> 0;
 		header[39] = wRes >> 8;
 		header[40] = wRes >> 16;
 		header[41] = wRes >> 24;
 
-		header[42] = hRes;
+		header[42] = hRes >> 0;
 		header[43] = hRes >> 8;
 		header[44] = hRes >> 16;
 		header[45] = hRes >> 24;
-
 
 		fwrite(header.data(), sizeof(unsigned char), 54, f);
 
 		//write pixel data
 		int pixelCount = 0;
 		std::vector<unsigned char>row(rowSize, 0);
-		while (pixelCount < w * h) {
-			for (int i = 0; i < rowSize; i += 3) {
-				if (padBytes == 0 || (i < pixelsPerRow && pixelCount < w * h * d)) {
+		while (pixelCount < w * h) 
+		{
+			for (int i = 0; i < rowSize; i += 3) 
+			{
+				if (padBytes == 0 || (i < pixelsPerRow && pixelCount < w * h * d)) 
+				{
 					row[i + 0] = pixels[pixelCount + 0];
 					row[i + 1] = pixels[pixelCount + 1];
 					row[i + 2] = pixels[pixelCount + 2];
 					++pixelCount;
 				}
-				else {
-					while (i < rowSize) {
+				else 
+				{
+					while (i < rowSize) 
+					{
 						row[i + 0] = 0;
 						++i;
 					}
@@ -210,14 +221,69 @@ namespace ImageCodecs
 		fclose(f);
 	}
 
-	void readDds(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
+	void readDds(std::string filepath, unsigned char** pixels, int& w, int& h, int& d)
 	{
+		nv_dds::CDDSImage image;
+		nv_dds::CSurface surf;
+		int totalBytes = 0;
+		try
+		{
+			bool flipImage = false;
+			image.load(filepath, flipImage);
+		}
+		catch (std::exception e1)
+		{
+			throw std::exception(e1.what());
+		}
+
+		w = image.get_width();
+		h = image.get_height();
+		d = image.get_depth();
+		totalBytes = image.get_size();
+
+		if (image.get_num_mipmaps() > 1) {
+			surf = image.get_mipmap(0);
+			w = surf.get_width();
+			h = surf.get_height();
+			d = surf.get_depth();
+			totalBytes = surf.get_size();
+		}
+
+		switch (image.get_type()) {
+		case nv_dds::TextureType::TextureFlat:
+			break;
+		case nv_dds::TextureType::TextureCubemap:
+			throw std::exception("Cannot handle .dds cubemap textures");
+		case nv_dds::TextureType::Texture3D:
+			throw std::exception("Cannot handle .dds 3D textures");
+		}
+
+		(*pixels) = new unsigned char[totalBytes];
+		unsigned int byte_counter = 0;
+		if (image.get_num_mipmaps() > 1) 
+		{
+			memcpy((*pixels), surf, surf.get_size());
+		}
+		else
+		{
+			memcpy((*pixels), image, image.get_size());
+		}
+
+		surf.clear();
+		image.clear();
 	}
 	void writeDds(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
 	{
+		nv_dds::CTexture img;
+		img.create(w,h,d,w*h*d,pixels);
+		nv_dds::CDDSImage ddsimage;
+		ddsimage.create_textureFlat(d == 3 ? GL_RGB : GL_RGBA, d, img);
+		ddsimage.save(filename);
+		img.clear();
+		ddsimage.clear();
 	}
 
-	void readGif(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
+	void readGif(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
 	{
 	}
 	void writeGif(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
@@ -333,7 +399,7 @@ namespace ImageCodecs
 	}
 
 
-	void readHdr(std::string filepath, unsigned char* pixels, int& w_, int& h_, int& d_)
+	void readHdr(std::string filepath, unsigned char** pixels, int& w_, int& h_, int& d_)
 	{
 		d_ = 3; // All .hdr files are RGB
 
@@ -401,14 +467,35 @@ namespace ImageCodecs
 		fclose(file);
 	}
 
-	void readJpg(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
+	void readJpg(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
 	{
-	}
-	void writeJpg(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
-	{
+		FILE* f = fopen(filename.c_str(), "rb");
+		fseek(f, 0, SEEK_END);
+		int size = (int)ftell(f);
+		(*pixels) = new unsigned char[size];
+		fseek(f, 0, SEEK_SET);
+		size = (int)fread((*pixels), 1, size, f);
+		fclose(f);
+
+		njInit();
+		if (njDecode((*pixels), size)) {
+			delete[] (*pixels);
+			throw std::exception("Error decoding the input file.\n");
+		}
+
+		d = 3;
+		w = njGetWidth();
+		h = njGetHeight();
+
+		njDone();
 	}
 
-	void readPng(std::string filepath, unsigned char* pixels, int& w, int& h, int& d)
+	void writeJpg(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
+	{
+		//tje_encode_to_file(filename.c_str(), w, h, d, pixels);
+	}
+
+	void readPng(std::string filepath, unsigned char** pixels, int& w, int& h, int& d)
 	{
 		std::vector<uint8_t> px;
 		uint32_t w_, h_, ch;
@@ -418,8 +505,8 @@ namespace ImageCodecs
 		w = w_;
 		h = h_;
 
-		pixels = new unsigned char[w * h * d];
-		memcpy(pixels, px.data(), px.size());
+		(*pixels) = new unsigned char[w * h * d];
+		memcpy((*pixels), px.data(), px.size());
 	}
 
 	void writePng(std::string filepath, unsigned char* pixels, int& w, int& h, int& d)
@@ -427,7 +514,7 @@ namespace ImageCodecs
 		fpng_encode_image_to_file(filepath.c_str(), pixels, w, h, d);
 	}
 
-    void readPpm(std::string filepath, unsigned char* pixels, int& w, int& h, int& d)
+    void readPpm(std::string filepath, unsigned char** pixels, int& w, int& h, int& d)
     {
         std::ifstream infile(filepath, std::ifstream::binary);
         if (!infile.is_open())
@@ -461,7 +548,7 @@ namespace ImageCodecs
             throw std::exception("Max value for pixel data should be 255");
         }
 
-        pixels = new uint8_t[w * h * 3];
+        (*pixels) = new uint8_t[w * h * 3];
 
         // ASCII
         if (mMagic == "P3")
@@ -470,7 +557,7 @@ namespace ImageCodecs
             {
                 std::string pixel_str;
                 infile >> pixel_str;
-                pixels[i] = static_cast<uint8_t> (std::stoi(pixel_str));
+                (*pixels)[i] = static_cast<uint8_t> (std::stoi(pixel_str));
             }
         }
         // Binary
@@ -478,7 +565,7 @@ namespace ImageCodecs
         {
             // Move curser once to skip '\n'
             infile.seekg(1, infile.cur);
-            infile.read(reinterpret_cast<char*>(pixels), w * h * 3);
+            infile.read(reinterpret_cast<char*>((*pixels)), w * h * 3);
         }
         else // Unrecognized format
         {
@@ -497,7 +584,7 @@ namespace ImageCodecs
         outfile.write(reinterpret_cast<char*>(pixels), w * h * 3);
     }
 
-    void readTga(std::string filepath, unsigned char* pixels, int& w, int& h, int& d)
+    void readTga(std::string filepath, unsigned char** pixels, int& w, int& h, int& d)
     {
         std::fstream hFile(filepath, std::ios::in | std::ios::binary);
         if (!hFile.is_open())
@@ -518,9 +605,9 @@ namespace ImageCodecs
             d = BitsPerPixel / 8;
             int size = ((w * BitsPerPixel + 31) / 32) * 4 * h;
 
-            pixels = new unsigned char(size);
+            (*pixels) = new unsigned char(size);
             bool ImageCompressed = false;
-            hFile.read(reinterpret_cast<char*>(pixels), size);
+            hFile.read(reinterpret_cast<char*>((*pixels)), size);
         }
         else if (!std::memcmp(IsCompressed, &Header, sizeof(IsCompressed)))
         {
@@ -561,14 +648,14 @@ namespace ImageCodecs
         fclose(fp);
     }
 
-	void readTiff(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
+	void readTiff(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
     {
     }
 	void writeTiff(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
     {
     }
 
-	void readWebp(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
+	void readWebp(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
     {
     }
 	void writeWebp(std::string filename, unsigned char* pixels, int& w, int& h, int& d)

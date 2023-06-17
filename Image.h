@@ -31,6 +31,14 @@ namespace ImageCodecs
 		void read(std::string filepath);
 		void write(std::string filepath);
 
+		~Image() 
+		{
+			if (pixels_)
+			{
+				delete[] pixels_;
+			}
+		}
+
 	private:
 
 	};
