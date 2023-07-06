@@ -1,5 +1,7 @@
 #include "codecs.h"
 #include "png.h"
+#include <algorithm>
+#include <cstdint>
 #include <exception>
 #include <fstream>
 #include <filesystem>
@@ -13,6 +15,33 @@
 
 namespace ImageCodecs
 {
+	void flip(unsigned char* pixels, const int w, const int h, const int d)
+	{
+		unsigned char* flipped = new unsigned char[w * h * d];
+
+		// Copy pixels in reverse order.
+		for (unsigned int i = 0; i < h; ++i)
+		{
+			for (unsigned int j = 0; j < w; ++j)
+			{
+				for (unsigned int k = 0; k < d; ++k)
+				{
+					unsigned int r = i * w * d;
+					unsigned int r_inv = (h - 1 - i) * w * d;
+					unsigned int c = j * d;
+					flipped[r + c + k] = pixels[r_inv + c + k];
+				}
+			}
+		}
+
+		// Now copy back over to original array.
+		for (unsigned int i = 0; i < w * h * d; ++i)
+		{
+			pixels[i] = flipped[i];
+		}
+		delete[] flipped;
+	}
+
 	void readBmp(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
 	{
 		const int bitDepth = 24; // For now, pixel depths are hardcoded to 8-bit RGB
@@ -34,6 +63,11 @@ namespace ImageCodecs
 
 		//open BMP file
 		FILE* f = fopen(filename.c_str(), "rb");
+
+		if (!f)
+		{
+			throw std::exception("Could not open .bmp file to read");
+		}
 
 		//read preliminary file data -- 14 bytes
 		unsigned char prelimData[14];
@@ -152,6 +186,11 @@ namespace ImageCodecs
 	void writeBmp(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
 	{
 		FILE* f = fopen(filename.c_str(), "wb"); //write file
+
+		if (!f)
+		{
+			throw std::exception("Could not open .bmp file to write");
+		}
 
 		const int bitDepth = d * 8;// bits per pixel
 		int pixelsPerRow = d * w;
@@ -584,41 +623,246 @@ namespace ImageCodecs
         outfile.write(reinterpret_cast<char*>(pixels), w * h * 3);
     }
 
-    void readTga(std::string filepath, unsigned char** pixels, int& w, int& h, int& d)
-    {
-        std::fstream hFile(filepath, std::ios::in | std::ios::binary);
-        if (!hFile.is_open())
-        {
-            throw std::invalid_argument("File Not Found.");
-        }
+	template <typename Type>
+	void RGBPaletted(Type* InBuffer, uint8_t* ColorMap, uint8_t* OutBuffer, size_t Size) {
+		const int PixelSize = 3;
+		Type Index;
+		uint8_t Red, Green, Blue;
+		uint8_t* ColorMapPtr;
+		for (size_t i = 0; i < Size; i++) {
+			Index = InBuffer[i];
+			ColorMapPtr = &ColorMap[Index * PixelSize];
+			Blue = *ColorMapPtr++;
+			Green = *ColorMapPtr++;
+			Red = *ColorMapPtr++;
+			*OutBuffer++ = Red;
+			*OutBuffer++ = Green;
+			*OutBuffer++ = Blue;
+		}
+	}
 
-        std::uint8_t Header[18] = { 0 };
-        static std::uint8_t DeCompressed[12] = { 0x0, 0x0, 0x2, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 };
-        static std::uint8_t IsCompressed[12] = { 0x0, 0x0, 0xA, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 };
+	template <typename Type>
+	void RGBAPaletted(Type* InBuffer, uint8_t* ColorMap, uint8_t* OutBuffer, size_t Size) {
+		const int PixelSize = 4;
+		Type Index;
+		uint8_t Red, Green, Blue, Alpha;
+		uint8_t* ColorMapPtr;
+		for (size_t i = 0; i < Size; i++) {
+			Index = InBuffer[i];
+			ColorMapPtr = &ColorMap[Index * PixelSize];
+			Blue = *ColorMapPtr++;
+			Green = *ColorMapPtr++;
+			Red = *ColorMapPtr++;
+			Alpha = *ColorMapPtr++;
+			*OutBuffer++ = Red;
+			*OutBuffer++ = Green;
+			*OutBuffer++ = Blue;
+			*OutBuffer++ = Alpha;
+		}
+	}
 
-        hFile.read(reinterpret_cast<char*>(&Header), sizeof(Header));
-        if (!std::memcmp(DeCompressed, &Header, sizeof(DeCompressed)))
-        {
-            int BitsPerPixel = Header[16];
-            w = Header[13] * 256 + Header[12];
-            h = Header[15] * 256 + Header[14];
-            d = BitsPerPixel / 8;
-            int size = ((w * BitsPerPixel + 31) / 32) * 4 * h;
+	void MonochromeCompressed(uint8_t* InBuffer, uint8_t* OutBuffer, size_t Size) {
+		uint8_t Header;
+		uint8_t Red;
+		size_t i, j, PixelCount;
+		for (i = 0; i < Size; ) {
+			Header = *InBuffer++;
+			PixelCount = (Header & 0x7F) + 1;
+			if (Header & 0x80) {
+				Red = *InBuffer++;
+				for (j = 0; j < PixelCount; j++)
+					*OutBuffer++ = Red;
+				i += PixelCount;
+			}
+			else {
+				for (j = 0; j < PixelCount; j++) {
+					Red = *InBuffer++;
+					*OutBuffer++ = Red;
+				}
+				i += PixelCount;
+			}
+		}
+	}
 
-            (*pixels) = new unsigned char(size);
-            bool ImageCompressed = false;
-            hFile.read(reinterpret_cast<char*>((*pixels)), size);
-        }
-        else if (!std::memcmp(IsCompressed, &Header, sizeof(IsCompressed)))
-        {
-            throw std::exception("Error! Cannot read compressed .tga files");
-        }
-        else
-        {
-            throw std::invalid_argument("Invalid File Format. Required: 24 or 32 Bit TGA File.");
-        }
-    }
+	void RGBCompressed(uint8_t* InBuffer, uint8_t* OutBuffer, size_t Size) {
+		uint8_t Header;
+		uint8_t Red, Green, Blue;
+		size_t i, j, PixelCount;
+		for (i = 0; i < Size; ) {
+			Header = *InBuffer++;
+			PixelCount = (Header & 0x7F) + 1;
 
+			if (Header & 0x80) {
+				Blue = *InBuffer++;
+				Green = *InBuffer++;
+				Red = *InBuffer++;
+				for (j = 0; j < PixelCount; j++) {
+					*OutBuffer++ = Red;
+					*OutBuffer++ = Green;
+					*OutBuffer++ = Blue;
+				}
+				i += PixelCount;
+			}
+			else {
+				for (j = 0; j < PixelCount; j++) {
+					Blue = *InBuffer++;
+					Green = *InBuffer++;
+					Red = *InBuffer++;
+					*OutBuffer++ = Red;
+					*OutBuffer++ = Green;
+					*OutBuffer++ = Blue;
+				}
+				i += PixelCount;
+			}
+		}
+	}
+
+	void RGBACompressed(uint8_t* InBuffer, uint8_t* OutBuffer, size_t Size) {
+		uint8_t Header;
+		uint8_t Red, Green, Blue, Alpha;
+		size_t i, j, PixelCount;
+
+		for (i = 0; i < Size; ) {
+			Header = *InBuffer++;
+			PixelCount = (Header & 0x7F) + 1;
+
+			if (Header & 0x80) {
+				Blue = *InBuffer++;
+				Green = *InBuffer++;
+				Red = *InBuffer++;
+				Alpha = *InBuffer++;
+
+				for (j = 0; j < PixelCount; j++) {
+					*OutBuffer++ = Red;
+					*OutBuffer++ = Green;
+					*OutBuffer++ = Blue;
+					*OutBuffer++ = Alpha;
+				}
+				i += PixelCount;
+			}
+			else {
+				for (j = 0; j < PixelCount; j++) {
+					Blue = *InBuffer++;
+					Green = *InBuffer++;
+					Red = *InBuffer++;
+					Alpha = *InBuffer++;
+
+					*OutBuffer++ = Red;
+					*OutBuffer++ = Green;
+					*OutBuffer++ = Blue;
+					*OutBuffer++ = Alpha;
+				}
+				i += PixelCount;
+			}
+		}
+	}
+
+	// Modified from: https://github.com/ColumbusUtrigas/TGA
+	void readTga(std::string filepath, unsigned char** pixels, int& w, int& h, int& d)
+	{
+		std::ifstream File(filepath, std::ios::binary);
+		if (!File.is_open()) return;
+		struct Header {
+			uint8_t IDLength;
+			uint8_t ColorMapType;
+			uint8_t ImageType;
+			uint16_t ColorMapOrigin;
+			uint16_t ColorMapLength;
+			uint8_t  ColorMapEntrySize;
+			uint16_t XOrigin;
+			uint16_t YOrigin;
+			uint16_t Width;
+			uint16_t Height;
+			uint8_t  Bits;
+			uint8_t  ImageDescriptor;
+		} Head;
+		size_t FileSize = 0;
+		File.seekg(0, std::ios_base::end);
+		FileSize = File.tellg();
+		File.seekg(0, std::ios_base::beg);
+		File.read((char*)&Head.IDLength, sizeof(Head.IDLength));
+		File.read((char*)&Head.ColorMapType, sizeof(Head.ColorMapType));
+		File.read((char*)&Head.ImageType, sizeof(Head.ImageType));
+		File.read((char*)&Head.ColorMapOrigin, sizeof(Head.ColorMapOrigin));
+		File.read((char*)&Head.ColorMapLength, sizeof(Head.ColorMapLength));
+		File.read((char*)&Head.ColorMapEntrySize, sizeof(Head.ColorMapEntrySize));
+		File.read((char*)&Head.XOrigin, sizeof(Head.XOrigin));
+		File.read((char*)&Head.YOrigin, sizeof(Head.YOrigin));
+		File.read((char*)&Head.Width, sizeof(Head.Width));
+		File.read((char*)&Head.Height, sizeof(Head.Height));
+		File.read((char*)&Head.Bits, sizeof(Head.Bits));
+		File.read((char*)&Head.ImageDescriptor, sizeof(Head.ImageDescriptor));
+		uint8_t* Descriptor = new uint8_t[Head.ImageDescriptor];
+		File.read((char*)Descriptor, Head.ImageDescriptor);
+		size_t ColorMapElementSize = Head.ColorMapEntrySize / 8;
+		size_t ColorMapSize = Head.ColorMapLength * ColorMapElementSize;
+		uint8_t* ColorMap = new uint8_t[ColorMapSize];
+		if (Head.ColorMapType == 1)
+			File.read((char*)ColorMap, ColorMapSize);
+		size_t PixelSize = Head.ColorMapLength == 0 ? (Head.Bits / 8) : ColorMapElementSize;
+		size_t DataSize = FileSize - sizeof(Header) - (Head.ColorMapType == 1 ? ColorMapSize : 0);
+		size_t ImageSize = Head.Width * Head.Height * PixelSize;
+		uint8_t* Buffer = new uint8_t[DataSize];
+		File.read((char*)Buffer, DataSize);
+		*pixels = new unsigned char[ImageSize];
+		memset(*pixels, 0, ImageSize);
+		switch (Head.ImageType) {
+			case 0: break; // No Image
+			case 1: {// Uncompressed paletted		
+				if (Head.Bits == 8) {
+					switch (PixelSize) {
+					case 3: RGBPaletted((uint8_t*)Buffer, ColorMap, *pixels, Head.Width * Head.Height); break;
+					case 4: RGBAPaletted((uint8_t*)Buffer, ColorMap, *pixels, Head.Width * Head.Height); break;
+					}
+				}
+				else if (Head.Bits == 16) {
+					switch (PixelSize) {
+					case 3: RGBPaletted((uint16_t*)Buffer, ColorMap, *pixels, Head.Width * Head.Height); break;
+					case 4: RGBAPaletted((uint16_t*)Buffer, ColorMap, *pixels, Head.Width * Head.Height); break;
+					}
+				}
+				break;
+			}
+			case 2: {// Uncompressed TrueColor		
+				if (Head.Bits = 24 || Head.Bits == 32) {
+					std::copy(&Buffer[0], &Buffer[ImageSize], &(*pixels)[0]);
+					for (size_t i = 0; i < ImageSize; i += PixelSize)
+						std::swap(*pixels[i], *pixels[i + 2]);
+				}
+				break;
+			}
+			case 3: {// Uncompressed Monochrome		
+				if (Head.Bits == 8)
+					std::copy(&Buffer[0], &Buffer[ImageSize], &(*pixels)[0]);
+				break;
+			}
+			case 9: break; // Compressed paletted TODO
+			case 10: {// Compressed TrueColor		
+				switch (Head.Bits)
+				{
+				case 24: RGBCompressed(Buffer, *pixels, Head.Width * Head.Height); break;
+				case 32: RGBACompressed(Buffer, *pixels, Head.Width * Head.Height); break;
+				}
+				break;
+			}
+			case 11: {// Compressed Monocrhome		
+				if (Head.Bits == 8)
+					MonochromeCompressed(Buffer, *pixels, Head.Width * Head.Height);
+				break;
+			}
+		}
+
+		if (Head.ImageType != 0) {
+			d = PixelSize;
+			w = Head.Width;
+			h = Head.Height;
+			flip(*pixels, w, h, d);
+		}
+		delete[] ColorMap;
+		delete[] Descriptor;
+	}
+
+	// NOTE: only writes uncompressed .tga for now.
     void writeTga(std::string filepath, unsigned char* pixels, int& w, int& h, int& d)
     {
         FILE* fp = NULL;

@@ -6,6 +6,8 @@
 
 namespace ImageCodecs
 {
+	void flip(unsigned char** pixels, const int w, const int h, const int d);
+
 	void readBmp(std::string filename, unsigned char** pixels, int& w, int& h, int& d);
 	void writeBmp(std::string filename, unsigned char* pixels, int& w, int& h, int& d);
 	
