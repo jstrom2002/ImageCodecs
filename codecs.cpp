@@ -5,6 +5,7 @@
 #include <exception>
 #include <fstream>
 #include <filesystem>
+#include <iostream>
 
 #define NV_DDS_NO_GL_SUPPORT
 #include "nv_dds.h"
@@ -12,6 +13,16 @@
 #define TJE_IMPLEMENTATION
 #include "jpeg_enc.h"
 #include "jpeg_dec.h"
+
+// libpng16 impl, requires liked libs
+#ifdef _DEBUG
+#pragma comment(lib, "zlibd.lib")
+#pragma comment(lib, "libpng16d.lib")
+#else
+#pragma comment(lib, "zlib.lib")
+#pragma comment(lib, "libpng16.lib")
+#endif
+#include <libpng16/png.h>
 
 namespace ImageCodecs
 {
@@ -82,6 +93,35 @@ namespace ImageCodecs
 		}
 	}
 
+	void Image::transpose(unsigned char* pixels, const int w, const int h, const int d)
+	{
+		unsigned char* flipped = new unsigned char[w * h * d];
+
+		// Copy pixels in reverse order.
+		for (unsigned int i = 0; i < h; ++i)
+		{
+			for (unsigned int j = 0; j < w; ++j)
+			{
+				for (unsigned int k = 0; k < d; ++k)
+				{
+					unsigned int r = i * w * d;
+					unsigned int c = j * d;
+					unsigned int r2 = j * h * d;
+					unsigned int c2 = i * d;
+					flipped[r + c + k] = pixels[r2 + c2 + k];
+				}
+			}
+		}
+
+		// Now copy back over to original array.
+		for (unsigned int i = 0; i < w * h * d; ++i)
+		{
+			pixels[i] = flipped[i];
+		}
+		delete[] flipped;
+	}
+
+
 	void Image::flipImage(unsigned char* pixels, const int w, const int h, const int d)
 	{
 		unsigned char* flipped = new unsigned char[w * h * d];
@@ -109,222 +149,170 @@ namespace ImageCodecs
 		delete[] flipped;
 	}
 
-	void Image::readBmp(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
+	void Image::swapBR(unsigned char* pixels, const int w, const int h, const int d)
 	{
-		const int bitDepth = 24; // For now, pixel depths are hardcoded to 8-bit RGB
-		int headerSize = 0;//size of header before pixel array
-		int hgt = 0;//gives image width
-		int horizontalResolution = 0;
-		int imageSize = 0;//gives image size
-		//const int numberOfColorsInPalatte = 0;//colors in palatte, 0 is default (2^n colors). No other values are handled for this class currently.
-		int numberOfPixels = 0;//number of total pixel vectors, ie for 24-bit arrays it would be 3 * wdt * hgt
-		int pixelsPerRow = 0;//number of pixels in a row, width*3
-		int padBytes = 0;//number of bytes padding each row
-		int rowSize = 0;//number of bytes necessary to store one row
-		int verticalResolution = 0; // resolutions should be either 96 or 72 dpi 
-		int wdt = 0;//gives image height 
-		const std::string headertype = "BITMAPINFOHEADER";
-		std::string colorOrdering = "BGR";//displays whether the array values are RGB, BGR, grayscale, etc
-		std::vector<unsigned char> header;//byte vector of the data for the header to BMP file
-		std::vector<std::vector<unsigned char>> pixels_;//an array of all the pixels in the BMP file 
+		unsigned char* flipped = new unsigned char[w * h * d];
 
-		//open BMP file
-		FILE* f = fopen(filename.c_str(), "rb");
-
-		if (!f)
+		// Copy pixels in reverse order.
+		for (unsigned int i = 0; i < h; ++i)
 		{
-			throw std::exception("Could not open .bmp file to read");
-		}
-
-		//read preliminary file data -- 14 bytes
-		unsigned char prelimData[14];
-		fread(prelimData, sizeof(unsigned char), 14, f);
-		for (int i = 0; i < 14; ++i)
-		{
-			header.push_back(prelimData[i]);
-		}
-		int numberOfBytes = (header[5] << 24) ^ (header[4] << 16) ^ (header[3] << 8) ^ header[2];//read number of bytes in file
-		int reservedBytes = (header[9] << 24) ^ (header[8] << 16) ^ (header[7] << 8) ^ header[6];//read reserved data -- unused
-		headerSize = (header[13] << 24) ^ (header[12] << 16) ^ (header[11] << 8) ^ header[10];//read starting address
-		if (headerSize != 54)
-		{
-			throw std::exception("Headers with non-54 byte length are not supported.");
-		}
-		std::string headertype2;
-		switch (headerSize)
-		{
-		case 12 + 14:  headertype2 = "BITMAPCOREHEADER"; break;
-		case 64 + 14:  headertype2 = "OS22XBITMAPHEADER"; break;
-		case 16 + 14:  headertype2 = "OS22XBITMAPHEADER"; break;
-		case 40 + 14:  headertype2 = "BITMAPINFOHEADER"; break;
-		case 52 + 14:  headertype2 = "BITMAPV2INFOHEADER"; break;
-		case 56 + 14:  headertype2 = "BITMAPV3INFOHEADER"; break;
-		case 10 + 14:  headertype2 = "BITMAPV4HEADER "; break;
-		case 124 + 14: headertype2 = "BITMAPV5HEADER"; break;
-		}
-
-		if (headertype2 != "BITMAPINFOHEADER")
-		{
-			throw std::exception("No headers but BITMAPINFOHEADER type are supported.");
-		}
-
-		//read and interpret file header data
-		unsigned char* headerData = new unsigned char[headerSize - 14];
-		fread(headerData, sizeof(unsigned char), headerSize - 14, f); //read rest of the 54-byte header
-		for (int i = 0; i < headerSize - 14; ++i)
-		{
-			header.push_back(headerData[i]);
-		}
-
-		//initialize class variables;
-		wdt = (header[21] << 24) ^ (header[20] << 16) ^ (header[19] << 8) ^ header[18];//gives image height 
-		hgt = (header[25] << 24) ^ (header[24] << 16) ^ (header[23] << 8) ^ header[22];//gives image width
-		horizontalResolution = (header[41] << 24) ^ (header[40] << 16) ^ (header[39] << 8) ^ header[38];
-		verticalResolution = (header[45] << 24) ^ (header[44] << 16) ^ (header[43] << 8) ^ header[42];
-		int colorDepth = (header[27] << 8) ^ header[28]; //read color depth to determine color array
-		if (colorDepth != 24)
-		{
-			throw std::exception("Non 8-bit pixel depth is unimplemented");
-		}
-		int compressionMethod = (header[33] << 24) ^ (header[32] << 16) ^ (header[31] << 8) ^ header[30];//tells what method of compression is used (0 = uncompressed) 
-		if (compressionMethod != 0)
-		{
-			throw std::exception("Decompression is unimplemented");
-		}
-		int numberOfColorsInPalatte = (header[49] << 24) ^ (header[48] << 16) ^ (header[47] << 8) ^ header[46];//gives number of colors in color palatte, 0 = 2^n (default)
-		if (numberOfColorsInPalatte != 0)
-		{
-			throw std::exception("Color palettes != 2^n are unimplemented");
-		}
-
-		// Update header
-		rowSize = std::floor(((bitDepth * wdt) + 31.0) / 32.0) * 4;
-		numberOfBytes = headerSize + (rowSize * hgt);
-		int temp = verticalResolution;
-		verticalResolution = horizontalResolution;
-		horizontalResolution = temp;
-		imageSize = hgt * rowSize;
-		numberOfPixels = 3 * hgt * wdt;
-		pixelsPerRow = 3 * wdt;
-		padBytes = rowSize - pixelsPerRow;
-
-
-		// Get all bytes from image w/ padding interspersed.
-		unsigned char c;
-		std::vector<unsigned char> data;
-		while (fread(&c, sizeof(unsigned char), 1, f)) {
-			data.push_back(c);
-		}
-		fclose(f);
-
-		// Remove padding bits.
-		int pixelCount = 0;//counts the number of pixel vectors read
-		std::vector<unsigned char> tempVec;
-		if (colorDepth == 24) {
-			for (int i = 0; i < data.size(); ++i) {
-				if (i % rowSize < rowSize - padBytes) {
-					if (i > 0 && i % 3 == 0)
+			for (unsigned int j = 0; j < w; ++j)
+			{
+				for (unsigned int k = 0; k < d; ++k)
+				{
+					unsigned int r = i * w * d;
+					unsigned int c = j * d;
+					if (k == 0)
 					{
-
-						pixels_.push_back(tempVec);
-						tempVec.clear();
+						flipped[r + c + 0] = pixels[r + c + 2];
 					}
-					tempVec.push_back(data[i]);
+					else if (k == 2)
+					{
+						flipped[r + c + 2] = pixels[r + c + 0];
+					}
+					else {
+						flipped[r + c + k] = pixels[r + c + k];
+					}
 				}
 			}
 		}
-		else
-		{
-			throw std::exception("Cannot handle non-RGB .bmp files");
-		}
 
-		// Output to pixels array.		
-		(*pixels) = new unsigned char[pixels_[0].size() * pixels_.size()];
-		for (unsigned int i = 0; i < pixels_.size(); ++i)
+		// Now copy back over to original array.
+		for (unsigned int i = 0; i < w * h * d; ++i)
 		{
-			for (unsigned int j = 0; j < pixels_[i].size(); ++j)
-			{
-				(*pixels)[i * pixels_[0].size() + j] = pixels_[i][j];
-			}
+			pixels[i] = flipped[i];
 		}
-		pixels_.clear();
+		delete[] flipped;
 	}
 
+	// Adapted from: https://github.com/marc-q/libbmp/blob/master/CPP/libbmp.cpp
+	// NOTE: handles only 3 channel RGB .bmp files with 'BITMAPINFOHEADER' format
+	void Image::readBmp(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
+	{
+		const uint32_t BMP_MAGIC = 19778;
+		struct {
+			unsigned int bfSize = 0;
+			unsigned int bfReserved = 0;
+			unsigned int bfOffBits = 54;
+			unsigned int biSize = 40;
+			int biWidth = 0;
+			int biHeight = 0;
+			unsigned short biPlanes = 1;
+			unsigned short biBitCount = 24;
+			unsigned int biCompression = 0;
+			unsigned int biSizeImage = 0;
+			int biXPelsPerMeter = 0;
+			int biYPelsPerMeter = 0;
+			unsigned int biClrUsed = 0;
+			unsigned int biClrImportant = 0;
+		} header;
+
+		struct {
+			size_t len_row;
+			size_t len_pixel = 3;
+		} bmpPixBuf;
+
+		// Open the image file in binary mode
+		std::ifstream f_img(filename.c_str(), std::ios::binary);
+
+		if (!f_img.is_open())
+			throw std::exception("Could not open .bmp file");
+
+		// Since an adress must be passed to fread, create a variable!
+		unsigned short magic;
+
+		// Check if its an bmp file by comparing the magic nbr
+		f_img.read(reinterpret_cast<char*>(&magic), sizeof(magic));
+
+		if (magic != BMP_MAGIC)
+		{
+			f_img.close();
+			throw std::exception("Could not parse .bmp file");
+		}
+
+		// Read the header structure into header
+		f_img.read(reinterpret_cast<char*>(&header), sizeof(header));
+
+		// Select the mode (bottom-up or top-down)
+		h = std::abs(header.biHeight);
+		const int offset = (header.biHeight > 0 ? 0 : h - 1);
+		const int padding = (header.biWidth % 4);
+
+		// Allocate the pixel buffer
+		{
+			bmpPixBuf.len_row = header.biWidth * bmpPixBuf.len_pixel;
+			*pixels = new unsigned char[h * bmpPixBuf.len_row];
+		}
+
+		for (int y = h - 1; y >= 0; y--)
+		{
+			// Read a whole row of pixels from the file
+			f_img.read(reinterpret_cast<char*> (&(*pixels)[(int)std::abs(y - offset) * bmpPixBuf.len_row]), bmpPixBuf.len_row);
+
+			// Skip the padding
+			f_img.seekg(padding, std::ios::cur);
+		}
+
+		h = header.biHeight;
+		w = header.biWidth;
+		d = 3;
+
+		f_img.close();
+	}
+
+	// Adapted from: https://github.com/marc-q/libbmp/blob/master/CPP/libbmp.cpp
+	// NOTE: handles only 3 channel RGB .bmp files with 'BITMAPINFOHEADER' format
 	void Image::writeBmp(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
 	{
-		FILE* f = fopen(filename.c_str(), "wb"); //write file
+		const uint32_t BMP_MAGIC = 19778;
+		struct {
+			unsigned int bfSize = 0;
+			unsigned int bfReserved = 0;
+			unsigned int bfOffBits = 54;
+			unsigned int biSize = 40;
+			int biWidth = 0;
+			int biHeight = 0;
+			unsigned short biPlanes = 1;
+			unsigned short biBitCount = 24;
+			unsigned int biCompression = 0;
+			unsigned int biSizeImage = 0;
+			int biXPelsPerMeter = 0;
+			int biYPelsPerMeter = 0;
+			unsigned int biClrUsed = 0;
+			unsigned int biClrImportant = 0;
+		} header;
 
-		if (!f)
-		{
+		header.bfSize = (3 * w + (w % 4)) * h;
+		header.biWidth = w;
+		header.biHeight = h;
+
+		// Open the image file in binary mode
+		std::ofstream f_img(filename.c_str(), std::ios::binary);
+
+		if (!f_img.is_open())
 			throw std::exception("Could not open .bmp file to write");
+
+		// Since an adress must be passed to fwrite, create a variable!
+		const unsigned short magic = BMP_MAGIC;
+
+		f_img.write(reinterpret_cast<const char*>(&magic), sizeof(magic));
+		f_img.write(reinterpret_cast<const char*>(&header), sizeof(header));
+
+		// Select the mode (bottom-up or top-down)
+		const int offset = (header.biHeight > 0 ? 0 : h - 1);
+		const int padding = header.biWidth % 4;
+
+		for (int y = h - 1; y >= 0; y--)
+		{
+			// Write a whole row of pixels into the file
+			uint32_t len_row = w * d;
+			f_img.write(reinterpret_cast<char*> (&pixels[(int)std::abs(y - offset) * len_row]), len_row);
+
+			// Write the padding
+			f_img.write("\0\0\0", padding);
 		}
 
-		const int bitDepth = d * 8;// bits per pixel
-		int pixelsPerRow = d * w;
-		int rowSize = std::floor(((bitDepth * w) + 31.0) / 32.0) * 4;
-		int padBytes = rowSize - pixelsPerRow;
-		int wRes = 2048;
-		int hRes = 2048;
-
-		//write header
-		std::vector<unsigned char> header = std::vector<unsigned char>
-		{
-				0x42, 0x4D, 0x26, 0x4F, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x36, 0x00,
-				0x00, 0x00, 0x28, 0x00, 0x00, 0x00, 0x8B, 0x01, 0x00, 0x00, 0x5C, 0x01,
-				0x00, 0x00, 0x01, 0x00, 0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x4E,
-				0x06, 0x00, 0x12, 0x0B, 0x00, 0x00, 0x12, 0x0B, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-		};
-
-		header[18] = w >> 0;
-		header[19] = w >> 8;
-		header[20] = w >> 16;
-		header[21] = w >> 24;
-
-		header[22] = h >> 0;
-		header[23] = h >> 8;
-		header[24] = h >> 16;
-		header[25] = h >> 24;
-
-		header[38] = wRes >> 0;
-		header[39] = wRes >> 8;
-		header[40] = wRes >> 16;
-		header[41] = wRes >> 24;
-
-		header[42] = hRes >> 0;
-		header[43] = hRes >> 8;
-		header[44] = hRes >> 16;
-		header[45] = hRes >> 24;
-
-		fwrite(header.data(), sizeof(unsigned char), 54, f);
-
-		//write pixel data
-		int pixelCount = 0;
-		std::vector<unsigned char>row(rowSize, 0);
-		while (pixelCount < w * h) 
-		{
-			for (int i = 0; i < rowSize; i += 3) 
-			{
-				if (padBytes == 0 || (i < pixelsPerRow && pixelCount < w * h * d)) 
-				{
-					row[i + 0] = pixels[pixelCount + 0];
-					row[i + 1] = pixels[pixelCount + 1];
-					row[i + 2] = pixels[pixelCount + 2];
-					++pixelCount;
-				}
-				else 
-				{
-					while (i < rowSize) 
-					{
-						row[i + 0] = 0;
-						++i;
-					}
-				}
-			}
-			fwrite(row.data(), sizeof(unsigned char), rowSize, f);
-		}
-
-		fclose(f);
+		f_img.close();
 	}
 
 	void Image::readDds(std::string filepath, unsigned char** pixels, int& w, int& h, int& d)
@@ -334,8 +322,7 @@ namespace ImageCodecs
 		int totalBytes = 0;
 		try
 		{
-			bool flipImage = false;
-			image.load(filepath, flipImage);
+			image.load(filepath, true);
 		}
 		catch (std::exception e1)
 		{
@@ -344,7 +331,7 @@ namespace ImageCodecs
 
 		w = image.get_width();
 		h = image.get_height();
-		d = image.get_depth();
+		d = image.get_components();
 		totalBytes = image.get_size();
 
 		if (image.get_num_mipmaps() > 1) {
@@ -352,7 +339,7 @@ namespace ImageCodecs
 			w = surf.get_width();
 			h = surf.get_height();
 			d = surf.get_depth();
-			totalBytes = surf.get_size();
+			totalBytes = surf.get_size();			
 		}
 
 		switch (image.get_type()) {
@@ -364,27 +351,39 @@ namespace ImageCodecs
 			throw std::exception("Cannot handle .dds 3D textures");
 		}
 
-		(*pixels) = new unsigned char[totalBytes];
-		unsigned int byte_counter = 0;
+		*pixels = new unsigned char[w*h*d];
+		unsigned int byte_counter = 0;		
 		if (image.get_num_mipmaps() > 1) 
 		{
-			memcpy((*pixels), surf, surf.get_size());
+			memcpy(*pixels, surf, w*h*d);
 		}
 		else
-		{
-			memcpy((*pixels), image, image.get_size());
+		{			
+			memcpy(*pixels, image, w*h*d);
 		}
 
 		surf.clear();
-		image.clear();
+		image.clear();		
 	}
 	void Image::writeDds(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
 	{
 		nv_dds::CTexture img;
-		img.create(w,h,d,w*h*d,pixels);
-		nv_dds::CDDSImage ddsimage;
-		ddsimage.create_textureFlat(d == 3 ? GL_RGB : GL_RGBA, d, img);
-		ddsimage.save(filename);
+		img.create(w,h,1,w*h*d,pixels);	
+		nv_dds::CDDSImage ddsimage;		
+		unsigned int fmt = 0;
+		switch (d) {
+		case 1:
+			fmt = 6403;//GL_RED
+			break;
+		case 3:
+			fmt = GL_RGB;
+			break;
+		case 4:
+			fmt = GL_RGBA;
+			break;
+		}
+		ddsimage.create_textureFlat(fmt, d, img);		
+		ddsimage.save(filename);		
 		img.clear();
 		ddsimage.clear();
 	}
@@ -601,23 +600,173 @@ namespace ImageCodecs
 		//tje_encode_to_file(filename.c_str(), w, h, d, pixels);
 	}
 
+	typedef struct {
+		const png_byte* data;
+		const png_size_t size;
+	} DataHandle;
+
+	typedef struct {
+		const DataHandle data;
+		png_size_t offset;
+	} ReadDataHandle;
+
+#define PNG_SIG_BYTES (8) /* bytes in the PNG file signature. */
+#define PNG_RGBA_PIXEL_LIMIT (0x1000000)
+
+	size_t Read(unsigned char* dest, unsigned char* Data, const size_t byteCount) {
+		std::copy(Data + 0, Data + byteCount, dest);
+		return byteCount;
+	}
+
+	void ReadDataFromInputStream(png_structp png_ptr, png_byte* raw_data, png_size_t read_length) {
+		ReadDataHandle* handle = (ReadDataHandle*)png_get_io_ptr(png_ptr);
+		const png_byte* png_src = handle->data.data + handle->offset;
+		memcpy(raw_data, png_src, read_length);
+		handle->offset += read_length;
+	}
+
+	static int png_rgba_pixel_limit(png_uint_32 w, png_uint_32 h) {
+		double da;
+		/* assert(w != 0 && h != 0); */
+		if (w > PNG_RGBA_PIXEL_LIMIT || h > PNG_RGBA_PIXEL_LIMIT)
+			return (1); /* since both (w) and (h) are non-zero. */
+		/* since an IEEE-754 double has a 53 bit mantissa, it can
+		* represent the maximum area: (w * h == 2^48) exactly. */
+		da = ((double)w) * ((double)h);
+		if (da > ((double)PNG_RGBA_PIXEL_LIMIT))
+			return (1);
+		return (0); /* the PNG image is within the pixel limit. */
+	}
+
+	unsigned int accessArray3D(unsigned int r, unsigned int c, unsigned int d, unsigned int rows, unsigned int cols, unsigned int depth) {
+		unsigned int idx = ((r * cols + c) * depth) + d;
+		if (idx >= cols * rows * depth) {
+			throw std::exception("ERROR! Indexing outside of array");
+		}
+		return idx;
+	}
+
+	//unsigned char* LoadPng(unsigned char* Data, int& width, int& height, int& depth, bool flip)	
 	void Image::readPng(std::string filepath, unsigned char** pixels, int& w, int& h, int& d)
 	{
-		std::vector<uint8_t> px;
-		uint32_t w_, h_, ch;
-		d = 4; // default load as RGBA data
+		unsigned int sz = std::filesystem::file_size(filepath);
+		unsigned char* Data = new unsigned char[sz];
+		std::ifstream ifile(filepath, std::ios::in | std::ios::binary);
+		ifile.read(reinterpret_cast<char*>(Data), sz);		
+		ifile.close();
 
-		fpng_decode_file(filepath.c_str(), px, w_, h_, ch, d);
-		w = w_;
-		h = h_;
+		png_byte magic[PNG_SIG_BYTES]; /* (signature byte buffer) */
+		png_structp png_ctx;
+		png_infop info_ctx;
+		png_uint_32 img_width, img_height, row;
+		png_byte img_depth, img_color_type;
 
-		(*pixels) = new unsigned char[w * h * d];
-		memcpy((*pixels), px.data(), px.size());
+		/* 'volatile' qualifier forces reload in setjmp cleanup: */
+		unsigned char* volatile img_data = NULL;
+		png_bytep* volatile row_data = NULL;
+
+		;//*buf = NULL;
+
+		 /* it is assumed that 'longjmp' can be invoked within this
+		 * code to efficiently unwind resources for *all* errors. */
+		 /* PNG structures and resource unwinding: */
+		if ((png_ctx = png_create_read_struct(
+			PNG_LIBPNG_VER_STRING, NULL, NULL, NULL)) == NULL)
+			return; /* ENOMEM (?) */
+		if ((info_ctx = png_create_info_struct(png_ctx)) == NULL)
+		{
+			png_destroy_read_struct(&png_ctx, NULL, NULL);
+			return; /* ENOMEM (?) */
+		}
+		if (setjmp(png_jmpbuf(png_ctx)) != 0)
+		{
+			png_destroy_read_struct(&png_ctx, &info_ctx, NULL);
+			free(img_data); free(row_data);
+			return; /* libpng feedback (?) */
+		}
+
+		/* check PNG file signature: */
+		Read(magic, Data, PNG_SIG_BYTES);
+
+		if (png_sig_cmp(magic, 0, PNG_SIG_BYTES))
+			png_error(png_ctx, "invalid PNG file");
+
+		/* set the input file stream and get the PNG image info: */
+		ReadDataHandle a = ReadDataHandle{ { Data, 898 }, 0 };
+		png_set_read_fn(png_ctx, &a, ReadDataFromInputStream);
+
+		//////////////// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+		png_read_info(png_ctx, info_ctx);
+		img_width = png_get_image_width(png_ctx, info_ctx);
+		img_height = png_get_image_height(png_ctx, info_ctx);
+
+		if (img_width == 0 || img_height == 0)
+			png_error(png_ctx, "zero area PNG image");
+		if (png_rgba_pixel_limit(img_width, img_height))
+			png_error(png_ctx, "PNG image exceeds pixel limits");
+
+		img_depth = png_get_bit_depth(png_ctx, info_ctx);
+		img_color_type = png_get_color_type(png_ctx, info_ctx);
+
+		/* ignored image interlacing, compression and filtering. */
+		/* force 8-bit color channels: */
+		if (img_depth == 16)
+			png_set_strip_16(png_ctx);
+		else if (img_depth < 8)
+			png_set_packing(png_ctx);
+		/* force formats to RGB: */
+		if (img_color_type != PNG_COLOR_TYPE_RGBA)
+			png_set_expand(png_ctx);
+		if (img_color_type == PNG_COLOR_TYPE_PALETTE)
+			png_set_palette_to_rgb(png_ctx);
+		if (img_color_type == PNG_COLOR_TYPE_GRAY)
+			png_set_gray_to_rgb(png_ctx);
+		if (img_color_type == PNG_COLOR_TYPE_GRAY_ALPHA)
+			png_set_gray_to_rgb(png_ctx);
+		/* add full opacity alpha channel if required: */
+		if (img_color_type != PNG_COLOR_TYPE_RGBA)
+			png_set_filler(png_ctx, 0xff, PNG_FILLER_AFTER);
+
+		/* apply the output transforms before reading image data: */
+		png_read_update_info(png_ctx, info_ctx);
+
+		/* allocate RGBA image data: */
+		img_data = (png_byte*)
+			malloc((size_t)(img_width * img_height * (4)));
+
+		if (img_data == NULL)
+			png_error(png_ctx, "error allocating image buffer");
+
+		/* allocate row pointers: */
+		row_data = (png_bytep*)
+			malloc((size_t)(img_height * sizeof(png_bytep)));
+		if (row_data == NULL)
+			png_error(png_ctx, "error allocating row pointers");
+
+		/* set the row pointers and read the RGBA image data: */
+		for (row = 0; row < img_height; row++)
+			row_data[row] = img_data +
+			(img_height - (row + 1)) * (img_width * (4));
+		png_read_image(png_ctx, row_data);
+
+		/* libpng and dynamic resource unwinding: */
+		png_read_end(png_ctx, NULL);
+		png_destroy_read_struct(&png_ctx, &info_ctx, NULL);
+		free(row_data);
+
+		w = img_width;
+		h = img_height;
+		d = 4; // Forced channel number to RGBA == 4.
+
+		delete[] Data;
+		*pixels = new unsigned char[w * h * d];
+		memcpy(*pixels, img_data, w*h*d);
 	}
 
 	void Image::writePng(std::string filepath, unsigned char* pixels, int& w, int& h, int& d)
 	{
-		fpng_encode_image_to_file(filepath.c_str(), pixels, w, h, d);
+		// TO DO: finish
 	}
 
     void Image::readPpm(std::string filepath, unsigned char** pixels, int& w, int& h, int& d)
