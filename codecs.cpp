@@ -15,7 +15,74 @@
 
 namespace ImageCodecs
 {
-	void flip(unsigned char* pixels, const int w, const int h, const int d)
+	void Image::read(std::string filepath)
+	{
+		auto ext = std::filesystem::path(filepath).extension().string();
+		for (auto& c : ext)
+			c = std::tolower(c);
+		if (ext == ".bmp")
+			readBmp(filepath, &pixels_, w_, h_, d_);
+		else if (ext == ".dds")
+			readDds(filepath, &pixels_, w_, h_, d_);
+		else if (ext == ".gif")
+			readGif(filepath, &pixels_, w_, h_, d_);
+		else if (ext == ".hdr")
+			readHdr(filepath, &pixels_, w_, h_, d_);
+		else if (ext == ".jpg" || ext == ".jpeg")
+			readJpg(filepath, &pixels_, w_, h_, d_);
+		else if (ext == ".png")
+			readPng(filepath, &pixels_, w_, h_, d_);
+		else if (ext == ".ppm")
+			readPpm(filepath, &pixels_, w_, h_, d_);
+		else if (ext == ".tga")
+			readTga(filepath, &pixels_, w_, h_, d_);
+		else if (ext == ".tif" || ext == ".tiff")
+			readTiff(filepath, &pixels_, w_, h_, d_);
+		else if (ext == ".webp")
+			readWebp(filepath, &pixels_, w_, h_, d_);
+		else
+		{
+			throw std::invalid_argument("Cannot parse filetype");
+		}
+
+		if (pixels_ == nullptr)
+		{
+			throw std::exception("Could not read image data");
+		}
+	}
+
+	void Image::write(std::string filepath)
+	{
+		auto ext = std::filesystem::path(filepath).extension().string();
+		for (auto& c : ext)
+			c = std::tolower(c);
+		if (ext == ".bmp")
+			writeBmp(filepath, pixels_, w_, h_, d_);
+		else if (ext == ".dds")
+			writeDds(filepath, pixels_, w_, h_, d_);
+		else if (ext == ".gif")
+			writeGif(filepath, pixels_, w_, h_, d_);
+		else if (ext == ".hdr")
+			writeHdr(filepath, pixels_, w_, h_, d_);
+		else if (ext == ".jpg" || ext == ".jpeg")
+			writeJpg(filepath, pixels_, w_, h_, d_);
+		else if (ext == ".png")
+			writePng(filepath, pixels_, w_, h_, d_);
+		else if (ext == ".ppm")
+			writePpm(filepath, pixels_, w_, h_, d_);
+		else if (ext == ".tga")
+			writeTga(filepath, pixels_, w_, h_, d_);
+		else if (ext == ".tiff" || ext == ".tif")
+			writeTiff(filepath, pixels_, w_, h_, d_);
+		else if (ext == ".webp")
+			writeWebp(filepath, pixels_, w_, h_, d_);
+		else
+		{
+			throw std::invalid_argument("Cannot parse filetype");
+		}
+	}
+
+	void Image::flipImage(unsigned char* pixels, const int w, const int h, const int d)
 	{
 		unsigned char* flipped = new unsigned char[w * h * d];
 
@@ -42,7 +109,7 @@ namespace ImageCodecs
 		delete[] flipped;
 	}
 
-	void readBmp(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
+	void Image::readBmp(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
 	{
 		const int bitDepth = 24; // For now, pixel depths are hardcoded to 8-bit RGB
 		int headerSize = 0;//size of header before pixel array
@@ -183,7 +250,7 @@ namespace ImageCodecs
 		pixels_.clear();
 	}
 
-	void writeBmp(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
+	void Image::writeBmp(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
 	{
 		FILE* f = fopen(filename.c_str(), "wb"); //write file
 
@@ -260,7 +327,7 @@ namespace ImageCodecs
 		fclose(f);
 	}
 
-	void readDds(std::string filepath, unsigned char** pixels, int& w, int& h, int& d)
+	void Image::readDds(std::string filepath, unsigned char** pixels, int& w, int& h, int& d)
 	{
 		nv_dds::CDDSImage image;
 		nv_dds::CSurface surf;
@@ -311,7 +378,7 @@ namespace ImageCodecs
 		surf.clear();
 		image.clear();
 	}
-	void writeDds(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
+	void Image::writeDds(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
 	{
 		nv_dds::CTexture img;
 		img.create(w,h,d,w*h*d,pixels);
@@ -322,14 +389,14 @@ namespace ImageCodecs
 		ddsimage.clear();
 	}
 
-	void readGif(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
+	void Image::readGif(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
 	{
 	}
-	void writeGif(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
+	void Image::writeGif(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
 	{
 	}
 
-	void writeHdr(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
+	void Image::writeHdr(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
 	{
 		// TO DO: finish
 	}
@@ -438,7 +505,7 @@ namespace ImageCodecs
 	}
 
 
-	void readHdr(std::string filepath, unsigned char** pixels, int& w_, int& h_, int& d_)
+	void Image::readHdr(std::string filepath, unsigned char** pixels, int& w_, int& h_, int& d_)
 	{
 		d_ = 3; // All .hdr files are RGB
 
@@ -506,7 +573,7 @@ namespace ImageCodecs
 		fclose(file);
 	}
 
-	void readJpg(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
+	void Image::readJpg(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
 	{
 		FILE* f = fopen(filename.c_str(), "rb");
 		fseek(f, 0, SEEK_END);
@@ -529,12 +596,12 @@ namespace ImageCodecs
 		njDone();
 	}
 
-	void writeJpg(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
+	void Image::writeJpg(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
 	{
 		//tje_encode_to_file(filename.c_str(), w, h, d, pixels);
 	}
 
-	void readPng(std::string filepath, unsigned char** pixels, int& w, int& h, int& d)
+	void Image::readPng(std::string filepath, unsigned char** pixels, int& w, int& h, int& d)
 	{
 		std::vector<uint8_t> px;
 		uint32_t w_, h_, ch;
@@ -548,12 +615,12 @@ namespace ImageCodecs
 		memcpy((*pixels), px.data(), px.size());
 	}
 
-	void writePng(std::string filepath, unsigned char* pixels, int& w, int& h, int& d)
+	void Image::writePng(std::string filepath, unsigned char* pixels, int& w, int& h, int& d)
 	{
 		fpng_encode_image_to_file(filepath.c_str(), pixels, w, h, d);
 	}
 
-    void readPpm(std::string filepath, unsigned char** pixels, int& w, int& h, int& d)
+    void Image::readPpm(std::string filepath, unsigned char** pixels, int& w, int& h, int& d)
     {
         std::ifstream infile(filepath, std::ifstream::binary);
         if (!infile.is_open())
@@ -612,7 +679,7 @@ namespace ImageCodecs
         }
     }
 
-    void writePpm(std::string filepath, unsigned char* pixels, int& w, int& h, int& d)
+    void Image::writePpm(std::string filepath, unsigned char* pixels, int& w, int& h, int& d)
     {
         std::ofstream outfile(filepath, std::ofstream::binary);
         if (outfile.fail())
@@ -758,7 +825,7 @@ namespace ImageCodecs
 	}
 
 	// Modified from: https://github.com/ColumbusUtrigas/TGA
-	void readTga(std::string filepath, unsigned char** pixels, int& w, int& h, int& d)
+	void Image::readTga(std::string filepath, unsigned char** pixels, int& w, int& h, int& d)
 	{
 		std::ifstream File(filepath, std::ios::binary);
 		if (!File.is_open()) return;
@@ -856,14 +923,14 @@ namespace ImageCodecs
 			d = PixelSize;
 			w = Head.Width;
 			h = Head.Height;
-			flip(*pixels, w, h, d);
+			flipImage(*pixels, w, h, d); // for some reason, this code loads the .tga data upside down
 		}
 		delete[] ColorMap;
 		delete[] Descriptor;
 	}
 
 	// NOTE: only writes uncompressed .tga for now.
-    void writeTga(std::string filepath, unsigned char* pixels, int& w, int& h, int& d)
+    void Image::writeTga(std::string filepath, unsigned char* pixels, int& w, int& h, int& d)
     {
         FILE* fp = NULL;
         fp = fopen(filepath.c_str(), "wb");
@@ -892,17 +959,17 @@ namespace ImageCodecs
         fclose(fp);
     }
 
-	void readTiff(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
+	void Image::readTiff(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
     {
     }
-	void writeTiff(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
+	void Image::writeTiff(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
     {
     }
 
-	void readWebp(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
+	void Image::readWebp(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
     {
     }
-	void writeWebp(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
+	void Image::writeWebp(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
     {
     }
 }

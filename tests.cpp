@@ -1,4 +1,4 @@
-#include "Image.h"
+#include "codecs.h"
 
 #include <iostream>
 #include <filesystem>
@@ -7,6 +7,11 @@
 
 int main(int argc, char** argv)
 {
+	if (!std::filesystem::exists("test"))
+	{
+		std::filesystem::create_directory("test");
+	}
+
 	for (auto& testFile : std::filesystem::recursive_directory_iterator("data"))
 	{
 		try 
