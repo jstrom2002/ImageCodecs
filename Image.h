@@ -1,5 +1,4 @@
 #pragma once
-#include "BaseCodec.h"
 #include "png.h"
 
 namespace ImageCodecs

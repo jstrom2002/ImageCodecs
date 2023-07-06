@@ -1,4 +1,3 @@
-#include "BaseCodec.h"
 #include <cmath>
 #include <exception>
 #include <string>

@@ -1,5 +1,4 @@
 #pragma once
-#include "BaseCodec.h"
 #include <stdlib.h>
 #include <stdint.h>
 #include <vector>
