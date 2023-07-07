@@ -1,5 +1,4 @@
 #include "codecs.h"
-#include "png.h"
 #include <algorithm>
 #include <cstdint>
 #include <exception>
@@ -14,14 +13,25 @@
 #include "jpeg_enc.h"
 #include "jpeg_dec.h"
 
-// libpng16 impl, requires liked libs
+#include "png.h"
+
+extern "C" {
+	#include <tiffio.h>
+}
+
+// required libs
+#pragma comment(lib, "jpeg.lib")
+#pragma comment(lib, "lzma.lib")
 #ifdef _DEBUG
 #pragma comment(lib, "zlibd.lib")
 #pragma comment(lib, "libpng16d.lib")
+#pragma comment(lib, "tiffd.lib")
 #else
 #pragma comment(lib, "zlib.lib")
 #pragma comment(lib, "libpng16.lib")
+#pragma comment(lib, "tiff.lib")
 #endif
+
 #include <libpng16/png.h>
 
 namespace ImageCodecs
@@ -1110,9 +1120,68 @@ namespace ImageCodecs
 
 	void Image::readTiff(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
     {
-    }
+		TIFFSetWarningHandler(0);
+		TIFF* tif = TIFFOpen(filename.c_str(), "r");
+		tdata_t* buf;
+		tsize_t scanline;
+		TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &w);
+		TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &h);
+		scanline = TIFFScanlineSize(tif);
+		buf = (tdata_t*)_TIFFmalloc(scanline);
+		*pixels = new unsigned char[w*h*d];
+		unsigned int counter = 0;
+		for (uintmax_t row = 0; row < h; row++)
+		{
+			int n = TIFFReadScanline(tif, buf, row, 0);
+			if (n == -1) {
+				printf("Error");
+				break;;
+			}
+			for (unsigned int i = 0; i < scanline; ++i)
+			{
+				auto c = unsigned char((uintmax_t)buf[i] / std::numeric_limits<uintmax_t>::max());
+				(*pixels)[counter] = c;
+				counter++;
+			}
+		}
+	}
 	void Image::writeTiff(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
     {
+		TIFFSetWarningHandler(0);
+		std::ofstream ofile(filename, std::ios::out);
+		ofile.close();
+		TIFF* image = TIFFOpen(filename.c_str(), "w");
+		TIFFSetField(image, TIFFTAG_IMAGEWIDTH, w);
+		TIFFSetField(image, TIFFTAG_IMAGELENGTH, h);
+		TIFFSetField(image, TIFFTAG_BITSPERSAMPLE, 32);
+		TIFFSetField(image, TIFFTAG_SAMPLESPERPIXEL, 1);
+		TIFFSetField(image, TIFFTAG_ROWSPERSTRIP, 1);
+		TIFFSetField(image, TIFFTAG_ORIENTATION, ORIENTATION_TOPLEFT);
+		TIFFSetField(image, TIFFTAG_PLANARCONFIG, PLANARCONFIG_CONTIG);
+		TIFFSetField(image, TIFFTAG_PHOTOMETRIC, PHOTOMETRIC_MINISBLACK);
+		TIFFSetField(image, TIFFTAG_SAMPLEFORMAT, SAMPLEFORMAT_UINT);
+		TIFFSetField(image, TIFFTAG_COMPRESSION, COMPRESSION_NONE);		
+		unsigned char* scan_line = new unsigned char[w * d];
+		for (int i = 0; i < h; i++) {
+
+			memcpy(scan_line, (void*)pixels[i * w], w * d);
+			TIFFWriteScanline(image, scan_line, i, 0);
+		}
+		
+		size_t linebytes = d * w;
+		unsigned char* buf = nullptr;
+		if (TIFFScanlineSize(image) > linebytes)
+			buf = new unsigned char[linebytes];
+		else
+			buf = new unsigned char[TIFFScanlineSize(image)];
+		TIFFSetField(image, TIFFTAG_ROWSPERSTRIP, TIFFDefaultStripSize(image, w * d));
+		//for (uintmax_t row = 0; row < h; row++){
+		//	//memcpy(buf, &image[(h - row - 1) * linebytes], linebytes);    // check the index here, and figure out why not using h*linebytes
+		//	if (TIFFWriteScanline(image, buf, row, 0) < 0)
+		//		break;
+		//}
+		TIFFClose(image);
+		delete[] scan_line;
     }
 
 	void Image::readWebp(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
