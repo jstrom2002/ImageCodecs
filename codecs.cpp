@@ -20,6 +20,9 @@ extern "C" {
 	#include <tiffio.h>
 }
 
+#define TINYEXR_IMPLEMENTATION
+#include "tinyexr.h"
+
 // required libs
 #pragma comment(lib, "jpeg.lib")
 #pragma comment(lib, "lzma.lib")
@@ -43,25 +46,27 @@ namespace ImageCodecs
 		for (auto& c : ext)
 			c = std::tolower(c);
 		if (ext == ".bmp")
-			readBmp(filepath, &pixels_, w_, h_, d_);
+			readBmp(filepath, &pixels_, w_, h_, d_,type_);
 		else if (ext == ".dds")
-			readDds(filepath, &pixels_, w_, h_, d_);
+			readDds(filepath, &pixels_, w_, h_, d_, type_);
+		else if (ext == ".exr")
+			readExr(filepath, &pixels_, w_, h_, d_, type_);
 		else if (ext == ".gif")
-			readGif(filepath, &pixels_, w_, h_, d_);
+			readGif(filepath, &pixels_, w_, h_, d_, type_);
 		else if (ext == ".hdr")
-			readHdr(filepath, &pixels_, w_, h_, d_);
+			readHdr(filepath, &pixels_, w_, h_, d_, type_);
 		else if (ext == ".jpg" || ext == ".jpeg")
-			readJpg(filepath, &pixels_, w_, h_, d_);
+			readJpg(filepath, &pixels_, w_, h_, d_, type_);
 		else if (ext == ".png")
-			readPng(filepath, &pixels_, w_, h_, d_);
+			readPng(filepath, &pixels_, w_, h_, d_, type_);
 		else if (ext == ".ppm")
-			readPpm(filepath, &pixels_, w_, h_, d_);
+			readPpm(filepath, &pixels_, w_, h_, d_, type_);
 		else if (ext == ".tga")
-			readTga(filepath, &pixels_, w_, h_, d_);
+			readTga(filepath, &pixels_, w_, h_, d_, type_);
 		else if (ext == ".tif" || ext == ".tiff")
-			readTiff(filepath, &pixels_, w_, h_, d_);
+			readTiff(filepath, &pixels_, w_, h_, d_, type_);
 		else if (ext == ".webp")
-			readWebp(filepath, &pixels_, w_, h_, d_);
+			readWebp(filepath, &pixels_, w_, h_, d_, type_);
 		else
 		{
 			throw std::invalid_argument("Cannot parse filetype");
@@ -79,25 +84,27 @@ namespace ImageCodecs
 		for (auto& c : ext)
 			c = std::tolower(c);
 		if (ext == ".bmp")
-			writeBmp(filepath, pixels_, w_, h_, d_);
+			writeBmp(filepath, pixels_, w_, h_, d_, type_);
 		else if (ext == ".dds")
-			writeDds(filepath, pixels_, w_, h_, d_);
+			writeDds(filepath, pixels_, w_, h_, d_, type_);
+		else if (ext == ".exr")
+			writeExr(filepath, pixels_, w_, h_, d_, type_);
 		else if (ext == ".gif")
-			writeGif(filepath, pixels_, w_, h_, d_);
+			writeGif(filepath, pixels_, w_, h_, d_, type_);
 		else if (ext == ".hdr")
-			writeHdr(filepath, pixels_, w_, h_, d_);
+			writeHdr(filepath, pixels_, w_, h_, d_, type_);
 		else if (ext == ".jpg" || ext == ".jpeg")
-			writeJpg(filepath, pixels_, w_, h_, d_);
+			writeJpg(filepath, pixels_, w_, h_, d_, type_);
 		else if (ext == ".png")
-			writePng(filepath, pixels_, w_, h_, d_);
+			writePng(filepath, pixels_, w_, h_, d_, type_);
 		else if (ext == ".ppm")
-			writePpm(filepath, pixels_, w_, h_, d_);
+			writePpm(filepath, pixels_, w_, h_, d_, type_);
 		else if (ext == ".tga")
-			writeTga(filepath, pixels_, w_, h_, d_);
+			writeTga(filepath, pixels_, w_, h_, d_, type_);
 		else if (ext == ".tiff" || ext == ".tif")
-			writeTiff(filepath, pixels_, w_, h_, d_);
+			writeTiff(filepath, pixels_, w_, h_, d_, type_);
 		else if (ext == ".webp")
-			writeWebp(filepath, pixels_, w_, h_, d_);
+			writeWebp(filepath, pixels_, w_, h_, d_, type_);
 		else
 		{
 			throw std::invalid_argument("Cannot parse filetype");
@@ -198,7 +205,7 @@ namespace ImageCodecs
 
 	// Adapted from: https://github.com/marc-q/libbmp/blob/master/CPP/libbmp.cpp
 	// NOTE: handles only 3 channel RGB .bmp files with 'BITMAPINFOHEADER' format
-	void Image::readBmp(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
+	void Image::readBmp(std::string filename, unsigned char** pixels, int& w, int& h, int& d, Type& type)
 	{
 		const uint32_t BMP_MAGIC = 19778;
 		struct {
@@ -223,16 +230,12 @@ namespace ImageCodecs
 			size_t len_pixel = 3;
 		} bmpPixBuf;
 
-		// Open the image file in binary mode
 		std::ifstream f_img(filename.c_str(), std::ios::binary);
-
 		if (!f_img.is_open())
 			throw std::exception("Could not open .bmp file");
 
-		// Since an adress must be passed to fread, create a variable!
-		unsigned short magic;
-
 		// Check if its an bmp file by comparing the magic nbr
+		unsigned short magic;
 		f_img.read(reinterpret_cast<char*>(&magic), sizeof(magic));
 
 		if (magic != BMP_MAGIC)
@@ -249,11 +252,9 @@ namespace ImageCodecs
 		const int offset = (header.biHeight > 0 ? 0 : h - 1);
 		const int padding = (header.biWidth % 4);
 
-		// Allocate the pixel buffer
-		{
-			bmpPixBuf.len_row = header.biWidth * bmpPixBuf.len_pixel;
-			*pixels = new unsigned char[h * bmpPixBuf.len_row];
-		}
+		// Allocate the pixel buffer		
+		bmpPixBuf.len_row = header.biWidth * bmpPixBuf.len_pixel;
+		*pixels = new unsigned char[h * bmpPixBuf.len_row];		
 
 		for (int y = h - 1; y >= 0; y--)
 		{
@@ -273,7 +274,7 @@ namespace ImageCodecs
 
 	// Adapted from: https://github.com/marc-q/libbmp/blob/master/CPP/libbmp.cpp
 	// NOTE: handles only 3 channel RGB .bmp files with 'BITMAPINFOHEADER' format
-	void Image::writeBmp(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
+	void Image::writeBmp(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type)
 	{
 		const uint32_t BMP_MAGIC = 19778;
 		struct {
@@ -326,7 +327,7 @@ namespace ImageCodecs
 		f_img.close();
 	}
 
-	void Image::readDds(std::string filepath, unsigned char** pixels, int& w, int& h, int& d)
+	void Image::readDds(std::string filepath, unsigned char** pixels, int& w, int& h, int& d, Type& type)
 	{
 		nv_dds::CDDSImage image;
 		nv_dds::CSurface surf;
@@ -373,10 +374,12 @@ namespace ImageCodecs
 			memcpy(*pixels, image, w*h*d);
 		}
 
+		flipImage(*pixels, w, h, d);
+
 		surf.clear();
 		image.clear();		
 	}
-	void Image::writeDds(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
+	void Image::writeDds(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type)
 	{
 		nv_dds::CTexture img;
 		img.create(w,h,1,w*h*d,pixels);	
@@ -399,14 +402,49 @@ namespace ImageCodecs
 		ddsimage.clear();
 	}
 
-	void Image::readGif(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
+	void Image::readExr(std::string filename, unsigned char** pixels, int& w, int& h, int& d, Type& type)
+	{
+		std::vector<unsigned char> loadedData;
+		std::ifstream ifile(filename.c_str(), std::ios::in | std::ios::binary);
+		while (ifile.good())
+		{
+			loadedData.push_back(ifile.get());
+		}
+		ifile.close();
+		float* floatPixels;
+		const char* err = "\0";
+		auto ret = LoadEXRFromMemory(&floatPixels, &w, &h, loadedData.data(), loadedData.size(), &err);
+		loadedData.clear();
+		if (!ret)
+		{
+			d = 4;
+			*pixels = new unsigned char[w * h * 4 * sizeof(float)];
+			memcpy(*pixels, floatPixels, w * h * 4 * sizeof(float));
+		}
+		else
+		{
+			std::cerr << err << std::endl;
+			FreeEXRErrorMessage(err);
+			throw std::exception("Could not load .exr");
+		}
+		type = Type::FLOAT;
+		delete[] floatPixels;
+	}
+
+	void Image::writeExr(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type)
+	{
+		// TO DO: finish
+		//auto ret = SaveEXRImageToFile(&exr_image, &exr_header, outfilename, &err);
+	}
+
+	void Image::readGif(std::string filename, unsigned char** pixels, int& w, int& h, int& d, Type& type)
 	{
 	}
-	void Image::writeGif(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
+	void Image::writeGif(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type)
 	{
 	}
 
-	void Image::writeHdr(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
+	void Image::writeHdr(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type)
 	{
 		// TO DO: finish
 	}
@@ -515,7 +553,7 @@ namespace ImageCodecs
 	}
 
 
-	void Image::readHdr(std::string filepath, unsigned char** pixels, int& w_, int& h_, int& d_)
+	void Image::readHdr(std::string filepath, unsigned char** pixels, int& w_, int& h_, int& d_, Type& type)
 	{
 		d_ = 3; // All .hdr files are RGB
 
@@ -571,19 +609,25 @@ namespace ImageCodecs
 			throw std::exception("Invalid file format");
 		}
 
-		// convert image 
+		// convert image and copy over float data.
+		type = Type::FLOAT;
+		*pixels = new unsigned char[w * h * 3 * sizeof(float)];
+		unsigned int lineCount = 0;
 		for (int y = h - 1; y >= 0; y--) {
 			if (decrunchHDR(scanline, w, file) == false)
 				break;
 			workOnRGBE(scanline, w, floatPixels);
+			memcpy(*pixels + lineCount, floatPixels, w * 3 * sizeof(float));
 			floatPixels += w * 3;
+			lineCount += w * 3 * sizeof(float);
 		}
-
+		
+		// Cleanup.
 		delete[] scanline;
 		fclose(file);
 	}
 
-	void Image::readJpg(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
+	void Image::readJpg(std::string filename, unsigned char** pixels, int& w, int& h, int& d, Type& type)
 	{
 		FILE* f = fopen(filename.c_str(), "rb");
 		fseek(f, 0, SEEK_END);
@@ -606,7 +650,7 @@ namespace ImageCodecs
 		njDone();
 	}
 
-	void Image::writeJpg(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
+	void Image::writeJpg(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type)
 	{
 		//tje_encode_to_file(filename.c_str(), w, h, d, pixels);
 	}
@@ -658,7 +702,7 @@ namespace ImageCodecs
 	}
 
 	//unsigned char* LoadPng(unsigned char* Data, int& width, int& height, int& depth, bool flip)	
-	void Image::readPng(std::string filepath, unsigned char** pixels, int& w, int& h, int& d)
+	void Image::readPng(std::string filepath, unsigned char** pixels, int& w, int& h, int& d, Type& type)
 	{
 		unsigned int sz = std::filesystem::file_size(filepath);
 		unsigned char* Data = new unsigned char[sz];
@@ -775,12 +819,12 @@ namespace ImageCodecs
 		memcpy(*pixels, img_data, w*h*d);
 	}
 
-	void Image::writePng(std::string filepath, unsigned char* pixels, int& w, int& h, int& d)
+	void Image::writePng(std::string filepath, unsigned char* pixels, int& w, int& h, int& d, Type& type)
 	{
 		png_encoder::saveToFile(filepath,pixels,w,h,d);
 	}
 
-    void Image::readPpm(std::string filepath, unsigned char** pixels, int& w, int& h, int& d)
+    void Image::readPpm(std::string filepath, unsigned char** pixels, int& w, int& h, int& d, Type& type)
     {
         std::ifstream infile(filepath, std::ifstream::binary);
         if (!infile.is_open())
@@ -839,7 +883,7 @@ namespace ImageCodecs
         }
     }
 
-    void Image::writePpm(std::string filepath, unsigned char* pixels, int& w, int& h, int& d)
+    void Image::writePpm(std::string filepath, unsigned char* pixels, int& w, int& h, int& d, Type& type)
     {
         std::ofstream outfile(filepath, std::ofstream::binary);
         if (outfile.fail())
@@ -985,7 +1029,7 @@ namespace ImageCodecs
 	}
 
 	// Modified from: https://github.com/ColumbusUtrigas/TGA
-	void Image::readTga(std::string filepath, unsigned char** pixels, int& w, int& h, int& d)
+	void Image::readTga(std::string filepath, unsigned char** pixels, int& w, int& h, int& d, Type& type)
 	{
 		std::ifstream File(filepath, std::ios::binary);
 		if (!File.is_open()) return;
@@ -1090,7 +1134,7 @@ namespace ImageCodecs
 	}
 
 	// NOTE: only writes uncompressed .tga for now.
-    void Image::writeTga(std::string filepath, unsigned char* pixels, int& w, int& h, int& d)
+    void Image::writeTga(std::string filepath, unsigned char* pixels, int& w, int& h, int& d, Type& type)
     {
         FILE* fp = NULL;
         fp = fopen(filepath.c_str(), "wb");
@@ -1119,7 +1163,7 @@ namespace ImageCodecs
         fclose(fp);
     }
 
-	void Image::readTiff(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
+	void Image::readTiff(std::string filename, unsigned char** pixels, int& w, int& h, int& d, Type& type)
     {
 		TIFFSetWarningHandler(0);
 		TIFF* tif = TIFFOpen(filename.c_str(), "r");
@@ -1146,7 +1190,7 @@ namespace ImageCodecs
 			}
 		}
 	}
-	void Image::writeTiff(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
+	void Image::writeTiff(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type)
     {
 		//// TO DO: finish debugging
 
@@ -1183,10 +1227,10 @@ namespace ImageCodecs
 		//delete[] scan_line;
     }
 
-	void Image::readWebp(std::string filename, unsigned char** pixels, int& w, int& h, int& d)
+	void Image::readWebp(std::string filename, unsigned char** pixels, int& w, int& h, int& d, Type& type)
     {
     }
-	void Image::writeWebp(std::string filename, unsigned char* pixels, int& w, int& h, int& d)
+	void Image::writeWebp(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type)
     {
     }
 }
