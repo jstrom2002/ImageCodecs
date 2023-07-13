@@ -826,6 +826,8 @@ namespace ImageCodecs
 		delete[] Data;
 		*pixels = new unsigned char[w * h * d];
 		memcpy(*pixels, img_data, w*h*d);
+
+		flipImage(*pixels, w, h, d);
 	}
 
 	void Image::writePng(std::string filepath, unsigned char* pixels, int& w, int& h, int& d, Type& type)
@@ -833,6 +835,13 @@ namespace ImageCodecs
 		png_encoder::saveToFile(filepath,pixels,w,h,d);
 	}
 
+	int getBit(int whichBit)
+	{
+		if (whichBit > 0 && whichBit <= 8)
+			return (1 << (whichBit - 1));
+		else
+			return 0;
+	}
     void Image::readPpm(std::string filepath, unsigned char** pixels, int& w, int& h, int& d, Type& type)
     {
 		std::vector<std::uint8_t> data;
@@ -843,7 +852,29 @@ namespace ImageCodecs
 		h = info.height();
 		d = info.channel();
 		*pixels = new unsigned char[w * h * d];
-		memcpy(*pixels, data.data(), w * h * d);
+		if (filepath.find(".pbm") != std::string::npos) // .pbm files are binary black/white, so extract 8 bits of pixel data per byte
+		{
+			unsigned int counter = 0;
+			for (unsigned int i = 0; i < data.size(); ++i)
+			{
+				int i_ = 0, j_ = 0;
+				unsigned char output[8];
+				for (unsigned int j = 0; j < 8; j++)
+				{
+					unsigned char px = (data[i] >> (7-j)) & 0x01;
+					(*pixels)[counter] = px > 0 ? 255 : 0;
+					
+					if (counter >= w * h)
+						break;
+				}
+				if (counter >= w * h)
+					break;
+			}
+		}
+		else
+		{
+			memcpy(*pixels, data.data(), w * h * d);
+		}
     }
 
     void Image::writePpm(std::string filepath, unsigned char* pixels, int& w, int& h, int& d, Type& type)

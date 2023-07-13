@@ -46,10 +46,33 @@ int main(int argc, char** argv)
 			if (!img.empty())
 			{
 #ifdef _DISPLAY_RESULTS
-				int typ = img.channels() == 3 ? CV_8UC3 : CV_8UC4;
+				int typ = 0;
+				switch (img.channels()) 
+				{
+				case 1:
+					typ = CV_8UC1;
+					break;
+				case 3:
+					typ = CV_8UC3;
+					break;
+				default:
+					typ = CV_8UC4;
+					break;
+				}
 				if (img.type() == ImageCodecs::Type::FLOAT)
 				{
-					typ = img.channels() == 3 ? CV_32FC3 : CV_32FC4;
+					switch (img.channels())
+					{
+					case 1:
+						typ = CV_32FC1;
+						break;
+					case 3:
+						typ = CV_32FC3;
+						break;
+					default:
+						typ = CV_32FC4;
+						break;
+					}
 				}
 				cv::Mat displayImg = cv::Mat::zeros(img.rows(), img.cols(), typ);
 				memcpy(displayImg.data, (*img.data()), img.cols() * img.rows() * img.channels());
