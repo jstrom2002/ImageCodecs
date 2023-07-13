@@ -16,6 +16,8 @@
 #include "png.h"
 #include "png_encoder.h"
 
+#include "pnm.h"
+
 extern "C" {
 	#include <tiffio.h>
 }
@@ -59,7 +61,7 @@ namespace ImageCodecs
 			readJpg(filepath, &pixels_, w_, h_, d_, type_);
 		else if (ext == ".png")
 			readPng(filepath, &pixels_, w_, h_, d_, type_);
-		else if (ext == ".ppm")
+		else if (ext == ".pbm" || ext == ".pfm" || ext == ".pgm" || ext == ".pnm" || ext == ".ppm")
 			readPpm(filepath, &pixels_, w_, h_, d_, type_);
 		else if (ext == ".tga")
 			readTga(filepath, &pixels_, w_, h_, d_, type_);
@@ -97,7 +99,7 @@ namespace ImageCodecs
 			writeJpg(filepath, pixels_, w_, h_, d_, type_);
 		else if (ext == ".png")
 			writePng(filepath, pixels_, w_, h_, d_, type_);
-		else if (ext == ".ppm")
+		else if (ext == ".pbm" || ext == ".pfm" || ext == ".pgm" || ext == ".pnm" || ext == ".ppm")
 			writePpm(filepath, pixels_, w_, h_, d_, type_);
 		else if (ext == ".tga")
 			writeTga(filepath, pixels_, w_, h_, d_, type_);
@@ -629,30 +631,37 @@ namespace ImageCodecs
 
 	void Image::readJpg(std::string filename, unsigned char** pixels, int& w, int& h, int& d, Type& type)
 	{
+		// Open file.
 		FILE* f = fopen(filename.c_str(), "rb");
 		fseek(f, 0, SEEK_END);
 		int size = (int)ftell(f);
-		(*pixels) = new unsigned char[size];
+		auto temparr = new unsigned char[size];
 		fseek(f, 0, SEEK_SET);
-		size = (int)fread((*pixels), 1, size, f);
+		size = (int)fread(temparr, 1, size, f);
 		fclose(f);
 
+		// Init jpeg lib and decode bytes.
 		njInit();
-		if (njDecode((*pixels), size)) {
-			delete[] (*pixels);
+		if (njDecode(temparr, size)) {
+			delete[] temparr;
 			throw std::exception("Error decoding the input file.\n");
 		}
 
+		// Copy results to local vars.
 		d = 3;
 		w = njGetWidth();
 		h = njGetHeight();
+		*pixels = new unsigned char[w * h * d];
+		memcpy(*pixels, njGetImage(), w*h*d);
 
+		// Cleanup.
+		delete[] temparr;
 		njDone();
 	}
 
 	void Image::writeJpg(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type)
 	{
-		//tje_encode_to_file(filename.c_str(), w, h, d, pixels);
+		tje_encode_to_file(filename.c_str(), w, h, d, pixels);
 	}
 
 	typedef struct {
@@ -826,61 +835,15 @@ namespace ImageCodecs
 
     void Image::readPpm(std::string filepath, unsigned char** pixels, int& w, int& h, int& d, Type& type)
     {
-        std::ifstream infile(filepath, std::ifstream::binary);
-        if (!infile.is_open())
-        {
-            throw std::exception(("Failed to open " + filepath).c_str());
-        }
-
-        int channels = 3;
-        std::string mMagic;
-        infile >> mMagic;
-        infile.seekg(1, infile.cur);
-        char c;
-        infile.get(c);
-        if (c == '#')
-        {
-            // We got comments in the PPM image and skip the comments
-            while (c != '\n')
-            {
-                infile.get(c);
-            }
-        }
-        else
-        {
-            infile.seekg(-1, infile.cur);
-        }
-
-        int maxPixelValue;
-        infile >> w >> h >> maxPixelValue;
-        if (maxPixelValue != 255)
-        {
-            throw std::exception("Max value for pixel data should be 255");
-        }
-
-        (*pixels) = new uint8_t[w * h * 3];
-
-        // ASCII
-        if (mMagic == "P3")
-        {
-            for (int i = 0; i < w * h * 3; i++)
-            {
-                std::string pixel_str;
-                infile >> pixel_str;
-                (*pixels)[i] = static_cast<uint8_t> (std::stoi(pixel_str));
-            }
-        }
-        // Binary
-        else if (mMagic == "P6")
-        {
-            // Move curser once to skip '\n'
-            infile.seekg(1, infile.cur);
-            infile.read(reinterpret_cast<char*>((*pixels)), w * h * 3);
-        }
-        else // Unrecognized format
-        {
-            throw std::exception("Unrecognized .ppm magic value. Should be either P3 (ascii) or P6 (binary) data");
-        }
+		std::vector<std::uint8_t> data;
+		std::ifstream ifile(filepath, std::ios::binary);
+		PNM::Info info;
+		ifile >> PNM::load(data,info);
+		w = info.width();
+		h = info.height();
+		d = info.channel();
+		*pixels = new unsigned char[w * h * d];
+		memcpy(*pixels, data.data(), w * h * d);
     }
 
     void Image::writePpm(std::string filepath, unsigned char* pixels, int& w, int& h, int& d, Type& type)

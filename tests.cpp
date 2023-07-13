@@ -22,6 +22,9 @@
 #include <fstream>
 #include <string>
 
+#define _DISPLAY_RESULTS
+
+
 int main(int argc, char** argv)
 {
 	if (!std::filesystem::exists("test"))
@@ -42,6 +45,7 @@ int main(int argc, char** argv)
 			// Display read pixels.
 			if (!img.empty())
 			{
+#ifdef _DISPLAY_RESULTS
 				int typ = img.channels() == 3 ? CV_8UC3 : CV_8UC4;
 				if (img.type() == ImageCodecs::Type::FLOAT)
 				{
@@ -58,6 +62,7 @@ int main(int argc, char** argv)
 				cv::imshow(testFile.path().extension().string(), displayImg);
 				cv::waitKey();
 				displayImg.deallocate();
+#endif
 			}
 
 			// Test .write()
