@@ -1,24 +1,4 @@
-/*
-   Copyright 2016 Dejan D. M. Milosavljevic
-
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
-
-       http://www.apache.org/licenses/LICENSE-2.0
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
-*/
-/*
- Project Name: PNM
- Description: PNM( Portable Anymap Format ) AKA Netpbm reader/decoder and writer/encoder
- Source: http://github.com/dmilos/PNM
-*/
-
+// Adapted from: http://github.com/dmilos/PNM
 #pragma once
 #include <cctype>
 #include <algorithm>
@@ -33,13 +13,15 @@ namespace PNM
     enum type
     {
         error,
-        P1 = 1, //!< bitmap, ASCII  , *.pbm
-        P2 = 2, //!< gray,   ASCII  . *.pgm
-        P3 = 3, //!< RGB,    ASCI   , *.ppm
-        P4 = 4, //!< bitmap, Binary , *.pbm
-        P5 = 5, //!< gray,   Binary , *.pgm
-        P6 = 6  //!< RGB,    Binary , *.ppm
-        /*, P7=7*/
+        P1 = 1, //!< bitmap,   ASCII  , *.pbm
+        P2 = 2, //!< gray,     ASCII  . *.pgm
+        P3 = 3, //!< RGB,      ASCI   , *.ppm
+        P4 = 4, //!< bitmap,   Binary , *.pbm
+        P5 = 5, //!< gray,     Binary , *.pgm
+        P6 = 6, //!< RGB,      Binary , *.ppm
+        /*, P7=7*/ // !< PAM format not implemented
+        PF = 8, //!< RGB float,ASCII  , *.pfm
+        Pf = 9  //!< gray float,ASCII , *.pfm
     };
 
     class Info
@@ -65,6 +47,7 @@ namespace PNM
             case(PNM::P5): m_channel = 1; m_depth = 8; break;
             case(PNM::P3): m_channel = 3; m_depth = 8; break;
             case(PNM::P6): m_channel = 3; m_depth = 8; break;
+            case(PNM::PF): m_channel = 3; m_depth = 32; break;
             }
         }
 
@@ -198,14 +181,17 @@ namespace PNM
             return 0 != counter;
         }
 
-        inline  PNM::type load_magic(std::istream& is)
+        inline PNM::type load_magic(std::istream& is)
         {
             auto begin = is.tellg();
             auto ch1 = is.get(); if (ch1 != 'P') { is.seekg(begin); return PNM::error; }
             auto ch2 = is.get();
             if ((ch2 - '0') < 0) { is.seekg(begin); return PNM::error; }
-            if (6 < (ch2 - '0')) { is.seekg(begin); return PNM::error; }
-
+            if (ch2 != 'F' && ch2 != 'f' && 6 < (ch2 - '0')) { is.seekg(begin); return PNM::error; }
+            if (ch2 == 'F')
+                return PNM::PF;
+            if (ch2 == 'f')
+                return PNM::Pf;
             return PNM::type(ch2 - '0');
         }
 
@@ -303,6 +289,18 @@ namespace PNM
             return false;
         }
 
+        inline bool load_raw_PF(std::istream& is, std::uint8_t* data, std::size_t const& width, std::size_t const& height, std::size_t const& channel)
+        {
+            is.read((char*)data, width * height * channel);
+            auto gc = is.gcount();
+            if ((width * height * channel) != std::size_t(gc))
+            {
+                return false;
+            }
+            if (is) return true;
+            return false;
+        }
+
         template< typename data_type >
         inline  bool save_ascii_P1(std::ostream& os, data_type* data, std::size_t const& width, std::size_t const& height)
         {
@@ -343,6 +341,13 @@ namespace PNM
 
         template< typename data_type >
         inline  bool save_bin_P5P6(std::ostream& os, data_type* data, std::size_t const& width, std::size_t const& height, std::size_t const& channel)
+        {
+            os.write((char*)data, width * height * channel);
+            return true;
+        }
+
+        template< typename data_type >
+        inline  bool save_bin_PF(std::ostream& os, data_type* data, std::size_t const& width, std::size_t const& height, std::size_t const& channel)
         {
             os.write((char*)data, width * height * channel);
             return true;
@@ -406,6 +411,11 @@ namespace PNM
                 {
                     size = this->width() * this->height() * this->channel();
                 }break;
+                case(PNM::PF):
+                {
+                    size = this->width() * this->height() * this->channel();
+                }
+                break;
                 default: break;
                 }
 
@@ -415,6 +425,7 @@ namespace PNM
                 case(PNM::P3):
                 case(PNM::P5):
                 case(PNM::P6):
+                case(PNM::PF):
                 {
                     if (false == PNM::_internal::load_junk(is)) { is.seekg(0, std::ios_base::beg); return false; }
                     if (false == PNM::_internal::load_number(is, this->m_maximum)) { is.seekg(0, std::ios_base::beg); return false; }
@@ -433,7 +444,7 @@ namespace PNM
 
                 switch (this->type())
                 {
-                case(PNM::P4): case(PNM::P5): case(PNM::P6):
+                case(PNM::P4): case(PNM::P5): case(PNM::P6): case(PNM::PF):
                 {
                     is.seekg(total - size, std::ios_base::beg);
                 }
@@ -487,6 +498,7 @@ namespace PNM
                 case(PNM::P4): return PNM::_internal::load_raw_P4(is, m_data.data(), m_probe.width(), m_probe.height());
                 case(PNM::P5): return PNM::_internal::load_raw_P5P6(is, m_data.data(), m_probe.width(), m_probe.height(), m_probe.channel());
                 case(PNM::P6): return PNM::_internal::load_raw_P5P6(is, m_data.data(), m_probe.width(), m_probe.height(), m_probe.channel());
+                case(PNM::PF): return PNM::_internal::load_raw_PF(is, m_data.data(), m_probe.width(), m_probe.height(), m_probe.channel());
                 }
 
                 return false;
@@ -561,6 +573,7 @@ namespace PNM
                 case(PNM::P4): return PNM::_internal::load_raw_P4(is, data, m_probe.width(), m_probe.height());
                 case(PNM::P5): return PNM::_internal::load_raw_P5P6(is, data, m_probe.width(), m_probe.height(), m_probe.channel());
                 case(PNM::P6): return PNM::_internal::load_raw_P5P6(is, data, m_probe.width(), m_probe.height(), m_probe.channel());
+                case(PNM::PF): return PNM::_internal::load_raw_PF(is, data, m_probe.width(), m_probe.height(), m_probe.channel());
                 }
 
                 return false;
@@ -600,6 +613,7 @@ namespace PNM
                 case(PNM::P5): m_channel = 1; break;
                 case(PNM::P3): m_channel = 3; break;
                 case(PNM::P6): m_channel = 3; break;
+                case(PNM::PF): m_channel = 3; break;
                 }
             }
 
@@ -621,7 +635,7 @@ namespace PNM
                 os << terminator;
 
                 m_channel = 1;
-                if ((PNM::P3 == m_type) || (PNM::P6 == m_type))
+                if ((PNM::P3 == m_type) || (PNM::P6 == m_type) || (PNM::PF == m_type))
                 {
                     m_channel = 3;
                 }
@@ -630,6 +644,7 @@ namespace PNM
                 if (PNM::P4 == m_type) { return PNM::_internal::save_bin_P4(os, m_data, m_width, m_height); }
                 if ((PNM::P2 == m_type) || (PNM::P3 == m_type)) return PNM::_internal::save_ascii_P2P3(os, m_data, m_width, m_height, m_channel);
                 if ((PNM::P5 == m_type) || (PNM::P6 == m_type)) return PNM::_internal::save_bin_P5P6(os, m_data, m_width, m_height, m_channel);
+                if (PNM::PF == m_type) return PNM::_internal::save_bin_PF(os, m_data, m_width, m_height, m_channel);
 
                 return false;
             }

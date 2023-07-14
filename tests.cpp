@@ -22,7 +22,7 @@
 #include <fstream>
 #include <string>
 
-#define _DISPLAY_RESULTS
+//#define _DISPLAY_RESULTS
 
 
 int main(int argc, char** argv)

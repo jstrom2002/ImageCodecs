@@ -62,7 +62,7 @@ namespace ImageCodecs
 		else if (ext == ".png")
 			readPng(filepath, &pixels_, w_, h_, d_, type_);
 		else if (ext == ".pbm" || ext == ".pfm" || ext == ".pgm" || ext == ".pnm" || ext == ".ppm")
-			readPpm(filepath, &pixels_, w_, h_, d_, type_);
+			readPbm(filepath, &pixels_, w_, h_, d_, type_);
 		else if (ext == ".tga")
 			readTga(filepath, &pixels_, w_, h_, d_, type_);
 		else if (ext == ".tif" || ext == ".tiff")
@@ -100,7 +100,7 @@ namespace ImageCodecs
 		else if (ext == ".png")
 			writePng(filepath, pixels_, w_, h_, d_, type_);
 		else if (ext == ".pbm" || ext == ".pfm" || ext == ".pgm" || ext == ".pnm" || ext == ".ppm")
-			writePpm(filepath, pixels_, w_, h_, d_, type_);
+			writePbm(filepath, pixels_, w_, h_, d_, type_);
 		else if (ext == ".tga")
 			writeTga(filepath, pixels_, w_, h_, d_, type_);
 		else if (ext == ".tiff" || ext == ".tif")
@@ -842,16 +842,23 @@ namespace ImageCodecs
 		else
 			return 0;
 	}
-    void Image::readPpm(std::string filepath, unsigned char** pixels, int& w, int& h, int& d, Type& type)
+    void Image::readPbm(std::string filepath, unsigned char** pixels, int& w, int& h, int& d, Type& type)
     {
 		std::vector<std::uint8_t> data;
 		std::ifstream ifile(filepath, std::ios::binary);
 		PNM::Info info;
+
 		ifile >> PNM::load(data,info);
 		w = info.width();
 		h = info.height();
 		d = info.channel();
-		*pixels = new unsigned char[w * h * d];
+		unsigned int sz = sizeof(unsigned char);
+		if (filepath.find(".pfm") != std::string::npos) // .pfm files contain float data
+		{
+			type = Type::FLOAT;
+			sz = sizeof(float);
+		}
+		*pixels = new unsigned char[w * h * d * sz];
 		if (filepath.find(".pbm") != std::string::npos) // .pbm files are binary black/white, so extract 8 bits of pixel data per byte
 		{
 			unsigned int counter = 0;
@@ -862,7 +869,7 @@ namespace ImageCodecs
 				for (unsigned int j = 0; j < 8; j++)
 				{
 					unsigned char px = (data[i] >> (7-j)) & 0x01;
-					(*pixels)[counter] = px > 0 ? 255 : 0;
+					(*pixels)[counter] = px == 255 ? 255 : 0;
 					
 					if (counter >= w * h)
 						break;
@@ -873,19 +880,50 @@ namespace ImageCodecs
 		}
 		else
 		{
-			memcpy(*pixels, data.data(), w * h * d);
+			memcpy(*pixels, data.data(), w * h * d * sz);
 		}
     }
 
-    void Image::writePpm(std::string filepath, unsigned char* pixels, int& w, int& h, int& d, Type& type)
+    void Image::writePbm(std::string filepath, unsigned char* pixels, int& w, int& h, int& d, Type& type)
     {
         std::ofstream outfile(filepath, std::ofstream::binary);
         if (outfile.fail())
         {
             throw std::exception("Failed to write ");
         }
-        outfile << "P6" << "\n" << w << " " << h << "\n" << 255 << "\n";
-        outfile.write(reinterpret_cast<char*>(pixels), w * h * 3);
+
+		if (filepath.find(".pbm") != std::string::npos)
+		{
+			outfile << "P1" << "\n" << w << " " << h << "\n";
+			for (unsigned int i = 0; i < w * h * d; ++i)
+			{
+				outfile << (pixels[i] > 0 ? "1" : "0");
+			}
+		}
+		else if (filepath.find(".pfm") != std::string::npos)
+		{
+			if (type != Type::FLOAT)
+			{
+				throw std::exception("Cannot write non-float data to .pfm");
+			}
+
+			outfile << "PF" << "\n" << w << " " << h << "\n" << "-1.0" << "\n";
+			for (unsigned int i = 0; i < w * h * d * sizeof(float); i += sizeof(float))
+			{
+				float px;
+				memcpy(&px, &pixels[i], sizeof(float));
+				outfile << px;
+			}
+		}
+		else if (filepath.find(".pgm") != std::string::npos || filepath.find(".ppm") != std::string::npos)
+		{
+			outfile << (filepath.find(".pgm") != std::string::npos ? "P5" : "P6") << "\n" << w << " " << h << "\n" << 255 << "\n";
+			outfile.write(reinterpret_cast<char*>(pixels), w * h * 3); // write binary
+		}
+		else
+		{
+			throw std::exception("Could not recognize netpbm format");
+		}
     }
 
 	template <typename Type>

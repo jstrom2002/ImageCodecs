@@ -47,8 +47,8 @@ namespace ImageCodecs
 		void writePng(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type);
 
 		// NOTE: works for all netpnm types: pbm,pfm,pgm,ppm,pnm
-		void readPpm(std::string filename, unsigned char** pixels, int& w, int& h, int& d, Type& type);
-		void writePpm(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type);
+		void readPbm(std::string filename, unsigned char** pixels, int& w, int& h, int& d, Type& type);
+		void writePbm(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type);
 
 		void readTga(std::string filename, unsigned char** pixels, int& w, int& h, int& d, Type& type);
 		void writeTga(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type);
