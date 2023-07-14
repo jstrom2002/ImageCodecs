@@ -915,10 +915,11 @@ namespace ImageCodecs
 				outfile << px;
 			}
 		}
-		else if (filepath.find(".pgm") != std::string::npos || filepath.find(".ppm") != std::string::npos)
+		else if (filepath.find(".pgm") != std::string::npos || filepath.find(".ppm") != std::string::npos || filepath.find(".pnm") != std::string::npos)
 		{
-			outfile << (filepath.find(".pgm") != std::string::npos ? "P5" : "P6") << "\n" << w << " " << h << "\n" << 255 << "\n";
-			outfile.write(reinterpret_cast<char*>(pixels), w * h * 3); // write binary
+			bool isPgm = filepath.find(".pgm") != std::string::npos;
+			outfile << (isPgm ? "P5" : "P6") << "\n" << w << " " << h << "\n" << 255 << "\n";
+			outfile.write(reinterpret_cast<char*>(pixels), w * h * d); // write binary
 		}
 		else
 		{
@@ -1197,30 +1198,30 @@ namespace ImageCodecs
 
 	void Image::readTiff(std::string filename, unsigned char** pixels, int& w, int& h, int& d, Type& type)
     {
-		TIFFSetWarningHandler(0);
-		TIFF* tif = TIFFOpen(filename.c_str(), "r");
-		tdata_t* buf;
-		tsize_t scanline;
-		TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &w);
-		TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &h);
-		scanline = TIFFScanlineSize(tif);
-		buf = (tdata_t*)_TIFFmalloc(scanline);
-		*pixels = new unsigned char[w*h*d];
-		unsigned int counter = 0;
-		for (uintmax_t row = 0; row < h; row++)
-		{
-			int n = TIFFReadScanline(tif, buf, row, 0);
-			if (n == -1) {
-				printf("Error");
-				break;;
-			}
-			for (unsigned int i = 0; i < scanline; ++i)
-			{
-				auto c = unsigned char((uintmax_t)buf[i] / std::numeric_limits<uintmax_t>::max());
-				(*pixels)[counter] = c;
-				counter++;
-			}
-		}
+		//TIFFSetWarningHandler(0);
+		//TIFF* tif = TIFFOpen(filename.c_str(), "r");
+		//tdata_t* buf;
+		//tsize_t scanline;
+		//TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &w);
+		//TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &h);
+		//scanline = TIFFScanlineSize(tif);
+		//buf = (tdata_t*)_TIFFmalloc(scanline);
+		//*pixels = new unsigned char[w*h*d];
+		//unsigned int counter = 0;
+		//for (uintmax_t row = 0; row < h; row++)
+		//{
+		//	int n = TIFFReadScanline(tif, buf, row, 0);
+		//	if (n == -1) {
+		//		printf("Error");
+		//		break;;
+		//	}
+		//	for (unsigned int i = 0; i < scanline; ++i)
+		//	{
+		//		auto c = unsigned char((uintmax_t)buf[i] / std::numeric_limits<uintmax_t>::max());
+		//		(*pixels)[counter] = c;
+		//		counter++;
+		//	}
+		//}
 	}
 	void Image::writeTiff(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type)
     {
