@@ -856,7 +856,7 @@ namespace ImageCodecs
 		if (filepath.find(".pfm") != std::string::npos) // .pfm files contain float data
 		{
 			type = Type::FLOAT;
-			sz = sizeof(float);
+			sz = 4; // assumes float size is 4 bytes
 		}
 		*pixels = new unsigned char[w * h * d * sz];
 		if (filepath.find(".pbm") != std::string::npos && info.type() == PNM::P4) // .pbm P4 files are binary black/white, so extract 8 bits of pixel data per byte
@@ -886,7 +886,7 @@ namespace ImageCodecs
 					}
 
 					unsigned char px = (data[i] >> (7 - j)) & 0x01;
-					(*pixels)[counter] = px > 0 ? 255 : 0;
+					(*pixels)[counter] = px > 0 ? 0 : 255;
 					counter++;
 				}
 
@@ -936,7 +936,7 @@ namespace ImageCodecs
 						break;
 					}
 					
-					unsigned char px = (pixels[counter] > 0 ? 0x01 : 0x00);
+					unsigned char px = (pixels[counter] > 0 ? 0x00 : 0x01);
 					byteToWrite |= (px << (7-j));
 					counter++;
 				}				
@@ -951,13 +951,8 @@ namespace ImageCodecs
 				throw std::exception("Cannot write non-float data to .pfm");
 			}
 
-			outfile << "PF" << "\n" << w << " " << h << "\n" << "-1.0" << "\n";
-			for (unsigned int i = 0; i < w * h * d * sizeof(float); i += sizeof(float))
-			{
-				float px;
-				memcpy(&px, &pixels[i], sizeof(float));
-				outfile << px;
-			}
+			outfile << (d == 3 ? "PF" : "Pf") << (char)0x0A << w << " " << h << (char)0x0A << "-1.0" << (char)0x0A;
+			outfile.write(reinterpret_cast<char*>(pixels), w * h * d * 4); // write binary
 		}
 		else if (filepath.find(".pgm") != std::string::npos || filepath.find(".ppm") != std::string::npos || filepath.find(".pnm") != std::string::npos)
 		{

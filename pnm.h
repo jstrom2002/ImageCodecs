@@ -1,4 +1,5 @@
 // Adapted from: http://github.com/dmilos/PNM
+// modified to load .pfm
 #pragma once
 #include <cctype>
 #include <algorithm>
@@ -38,6 +39,7 @@ namespace PNM
             , m_maximum(maximum)
             , m_type(type)
         {
+            m_minimum = 0;
             switch (m_type)
             {
             case(PNM::error): m_channel = 1; m_depth = 1; break;
@@ -57,6 +59,7 @@ namespace PNM
         size_type const& channel()const { return m_channel; }
         size_type const& depth()  const { return m_depth; } //!< Depth of channel in bits
         size_type const& maximum()const { return m_maximum; }
+        size_type const& minimum()const { return m_minimum; }
         PNM::type const& type()   const { return m_type; }
 
     public:
@@ -65,6 +68,7 @@ namespace PNM
         size_type& channel() { return m_channel; }
         size_type& depth() { return m_depth; }
         size_type& maximum() { return m_maximum; }
+        size_type& minimum() { return m_minimum; }
         PNM::type& type() { return m_type; }
 
     private:
@@ -73,6 +77,7 @@ namespace PNM
         size_type   m_channel;
         size_type   m_depth;   //!< Depth of channel in bits
         size_type   m_maximum;
+        size_type   m_minimum;
         PNM::type   m_type;
     };
 
@@ -151,6 +156,35 @@ namespace PNM
                 ch = is.get();
             } while (0 != std::isdigit(ch));
             is.unget();
+            return true;
+        }
+
+        inline bool load_float_numbers(std::istream& is, std::size_t& number1, std::size_t& number2)
+        {
+            if (is.get() != '-')// ignore sign of float val, ie '-1.0'
+            {
+                is.unget();
+                return false;
+            }
+
+            auto ch = is.get(); // first number is max
+            number2 = 1;
+            {
+                number2 = ch - '0';
+            }
+
+            if (is.get() != '.')// ignore period of float val, ie '-1.0'
+            {
+                is.unget();
+                return false;
+            }
+
+            ch = is.get(); // second number is min
+            number1 = 0;
+            {
+                number1 = ch - '0';
+            }
+
             return true;
         }
 
@@ -289,11 +323,11 @@ namespace PNM
             return false;
         }
 
-        inline bool load_raw_PF(std::istream& is, std::uint8_t* data, std::size_t const& width, std::size_t const& height, std::size_t const& channel)
+        inline bool load_raw_PFPf(std::istream& is, std::uint8_t* data, std::size_t const& width, std::size_t const& height, std::size_t const& channel)
         {
-            is.read((char*)data, width * height * channel);
+            is.read((char*)data, width * height * channel * 4); // assumes 4 byte float size
             auto gc = is.gcount();
-            if ((width * height * channel) != std::size_t(gc))
+            if ((width * height * channel * 4) != std::size_t(gc)) // assumes 4 byte float size
             {
                 return false;
             }
@@ -363,12 +397,14 @@ namespace PNM
                 , m_height(info.height())
                 , m_channel(info.channel())
                 , m_maximum(info.maximum())
+                , m_minimum(info.minimum())
             {
                 this->m_width = -1;
                 this->m_height = -1;
                 this->m_type = PNM::error;
                 this->m_channel = 0;
                 this->m_maximum = 1;
+                this->m_minimum = 0;
             }
 
             bool process(std::istream& is)
@@ -391,6 +427,8 @@ namespace PNM
                 case(PNM::P4): this->m_channel = 1; break;
                 case(PNM::P5): this->m_channel = 1; break;
                 case(PNM::P6): this->m_channel = 3; break;
+                case(PNM::PF): this->m_channel = 3; break;
+                case(PNM::Pf): this->m_channel = 1; break;
                 default: return false;
                 }
 
@@ -412,10 +450,10 @@ namespace PNM
                     size = this->width() * this->height() * this->channel();
                 }break;
                 case(PNM::PF):
+                case(PNM::Pf):
                 {
-                    size = this->width() * this->height() * this->channel();
-                }
-                break;
+                    size = this->width() * this->height() * this->channel() * 4; // assumes 32-bit float data.
+                }break;
                 default: break;
                 }
 
@@ -425,10 +463,15 @@ namespace PNM
                 case(PNM::P3):
                 case(PNM::P5):
                 case(PNM::P6):
-                case(PNM::PF):
                 {
                     if (false == PNM::_internal::load_junk(is)) { is.seekg(0, std::ios_base::beg); return false; }
                     if (false == PNM::_internal::load_number(is, this->m_maximum)) { is.seekg(0, std::ios_base::beg); return false; }
+                }break;
+                case(PNM::PF):
+                case(PNM::Pf):
+                {
+                    if (false == PNM::_internal::load_junk(is)) { is.seekg(0, std::ios_base::beg); return false; }
+                    if (false == PNM::_internal::load_float_numbers(is, this->m_minimum, this->m_maximum)) { is.seekg(0, std::ios_base::beg); return false; }
                 }
                 default: break;
                 }
@@ -444,7 +487,7 @@ namespace PNM
 
                 switch (this->type())
                 {
-                case(PNM::P4): case(PNM::P5): case(PNM::P6): case(PNM::PF):
+                case(PNM::P4): case(PNM::P5): case(PNM::P6): case(PNM::PF): case(PNM::Pf):
                 {
                     is.seekg(total - size, std::ios_base::beg);
                 }
@@ -464,6 +507,7 @@ namespace PNM
             std::size_t& m_width;
             std::size_t& m_height;
             std::size_t& m_channel;
+            std::size_t& m_minimum;
             std::size_t& m_maximum;
         };
 
@@ -484,6 +528,10 @@ namespace PNM
                 {
                     m_data.resize(this->m_probe.height() * (this->m_probe.width() / 8 + ((this->m_probe.width() % 8) ? 1 : 0)));
                 }
+                else if (PNM::PF == m_probe.type() || PNM::Pf == m_probe.type())
+                {
+                    m_data.resize(m_probe.width() * m_probe.height() * m_probe.channel() * 4); // assumes 4 byte float size
+                }
                 else
                 {
                     m_data.resize(m_probe.width() * m_probe.height() * m_probe.channel());
@@ -498,7 +546,8 @@ namespace PNM
                 case(PNM::P4): return PNM::_internal::load_raw_P4(is, m_data.data(), m_probe.width(), m_probe.height());
                 case(PNM::P5): return PNM::_internal::load_raw_P5P6(is, m_data.data(), m_probe.width(), m_probe.height(), m_probe.channel());
                 case(PNM::P6): return PNM::_internal::load_raw_P5P6(is, m_data.data(), m_probe.width(), m_probe.height(), m_probe.channel());
-                case(PNM::PF): return PNM::_internal::load_raw_PF(is, m_data.data(), m_probe.width(), m_probe.height(), m_probe.channel());
+                case(PNM::PF): return PNM::_internal::load_raw_PFPf(is, m_data.data(), m_probe.width(), m_probe.height(), m_probe.channel());
+                case(PNM::Pf): return PNM::_internal::load_raw_PFPf(is, m_data.data(), m_probe.width(), m_probe.height(), m_probe.channel());
                 }
 
                 return false;
@@ -573,7 +622,8 @@ namespace PNM
                 case(PNM::P4): return PNM::_internal::load_raw_P4(is, data, m_probe.width(), m_probe.height());
                 case(PNM::P5): return PNM::_internal::load_raw_P5P6(is, data, m_probe.width(), m_probe.height(), m_probe.channel());
                 case(PNM::P6): return PNM::_internal::load_raw_P5P6(is, data, m_probe.width(), m_probe.height(), m_probe.channel());
-                case(PNM::PF): return PNM::_internal::load_raw_PF(is, data, m_probe.width(), m_probe.height(), m_probe.channel());
+                case(PNM::PF): return PNM::_internal::load_raw_PFPf(is, data, m_probe.width(), m_probe.height(), m_probe.channel());
+                case(PNM::Pf): return PNM::_internal::load_raw_PFPf(is, data, m_probe.width(), m_probe.height(), m_probe.channel());
                 }
 
                 return false;
