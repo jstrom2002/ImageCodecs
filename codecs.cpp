@@ -142,7 +142,7 @@ namespace ImageCodecs
 	}
 
 
-	void Image::flipImage(unsigned char* pixels, const int w, const int h, const int d)
+	void Image::flip(unsigned char* pixels, const int w, const int h, const int d)
 	{
 		unsigned char* flipped = new unsigned char[w * h * d];
 
@@ -376,7 +376,7 @@ namespace ImageCodecs
 			memcpy(*pixels, image, w*h*d);
 		}
 
-		flipImage(*pixels, w, h, d);
+		flip(*pixels, w, h, d);
 
 		surf.clear();
 		image.clear();		
@@ -827,7 +827,7 @@ namespace ImageCodecs
 		*pixels = new unsigned char[w * h * d];
 		memcpy(*pixels, img_data, w*h*d);
 
-		flipImage(*pixels, w, h, d);
+		flip(*pixels, w, h, d);
 	}
 
 	void Image::writePng(std::string filepath, unsigned char* pixels, int& w, int& h, int& d, Type& type)
@@ -845,7 +845,7 @@ namespace ImageCodecs
     void Image::readPbm(std::string filepath, unsigned char** pixels, int& w, int& h, int& d, Type& type)
     {
 		std::vector<std::uint8_t> data;
-		std::ifstream ifile(filepath, std::ios::binary);
+		std::ifstream ifile(filepath, std::ios::in|std::ios::binary);
 		PNM::Info info;
 
 		ifile >> PNM::load(data,info);
@@ -859,23 +859,38 @@ namespace ImageCodecs
 			sz = sizeof(float);
 		}
 		*pixels = new unsigned char[w * h * d * sz];
-		if (filepath.find(".pbm") != std::string::npos) // .pbm files are binary black/white, so extract 8 bits of pixel data per byte
+		if (filepath.find(".pbm") != std::string::npos && info.type() == PNM::P4) // .pbm P4 files are binary black/white, so extract 8 bits of pixel data per byte
 		{
-			unsigned int counter = 0;
+			int lastRowBits = w % 8;
+			unsigned int counter = 0;			
+			bool endOfRow = false;
+			bool rowJustEnded = false;
 			for (unsigned int i = 0; i < data.size(); ++i)
-			{
-				int i_ = 0, j_ = 0;
-				unsigned char output[8];
+			{				
 				for (unsigned int j = 0; j < 8; j++)
 				{
-					unsigned char px = (data[i] >> (7-j)) & 0x01;
-					(*pixels)[counter] = px == 255 ? 255 : 0;
-					
-					if (counter >= w * h)
+					if (!rowJustEnded && counter > 0 && counter % w == 0) // skip padding bits in byte at end of row.
+					{
+						endOfRow = true;
+					}
+					else
+					{
+						rowJustEnded = false;
+					}
+
+					if (endOfRow && j >= lastRowBits)
+					{
+						endOfRow = false;
+						rowJustEnded = true;
 						break;
+					}
+
+					unsigned char px = (data[i] >> (7 - j)) & 0x01;
+					(*pixels)[counter] = px > 0 ? 255 : 0;
+					counter++;
 				}
-				if (counter >= w * h)
-					break;
+
+				endOfRow = false;
 			}
 		}
 		else
@@ -894,10 +909,39 @@ namespace ImageCodecs
 
 		if (filepath.find(".pbm") != std::string::npos)
 		{
-			outfile << "P1" << "\n" << w << " " << h << "\n";
-			for (unsigned int i = 0; i < w * h * d; ++i)
+			outfile << "P4" << "\n" << w << " " << h << "\n";
+
+			int lastRowBits = w % 8;
+			unsigned int counter = 0;
+			bool endOfRow = false;
+			bool rowJustEnded = false;
+			while (counter < (w * h * d) + (h * lastRowBits))
 			{
-				outfile << (pixels[i] > 0 ? "1" : "0");
+				unsigned char byteToWrite = 0;
+				for (unsigned int j = 0; j < 8; j++)
+				{
+					if (!rowJustEnded && counter > 0 && counter % w == 0) // skip padding bits in byte at end of row.
+					{
+						endOfRow = true;
+					}
+					else
+					{
+						rowJustEnded = false;
+					}
+
+					if (endOfRow && j >= lastRowBits)
+					{
+						endOfRow = false;
+						rowJustEnded = true;
+						break;
+					}
+					
+					unsigned char px = (pixels[counter] > 0 ? 0x01 : 0x00);
+					byteToWrite |= (px << (7-j));
+					counter++;
+				}				
+				outfile << byteToWrite;
+				endOfRow = false;
 			}
 		}
 		else if (filepath.find(".pfm") != std::string::npos)
@@ -1160,7 +1204,7 @@ namespace ImageCodecs
 			d = PixelSize;
 			w = Head.Width;
 			h = Head.Height;
-			flipImage(*pixels, w, h, d); // for some reason, this code loads the .tga data upside down
+			flip(*pixels, w, h, d); // for some reason, this code loads the .tga data upside down
 		}
 		delete[] ColorMap;
 		delete[] Descriptor;
