@@ -14,15 +14,16 @@ namespace ImageCodecs
 
 	class Image
 	{
+		const int FLOAT_SIZE = 4; // this lib requires the size of all 'float' types == 4 bytes, else many decoders will not work.
 		int h_ = 0;
 		int w_ = 0;
 		int d_ = 0;
 		unsigned char* pixels_ = nullptr;
 		Type type_ = Type::UBYTE;
 		
-		void flipImage(unsigned char* pixels, const int w, const int h, const int d);
-		void swapBR(unsigned char* pixels, const int w, const int h, const int d);
-		void transpose(unsigned char* pixels, const int w, const int h, const int d);
+		void flip(unsigned char* pixels, const int w, const int h, const int d, const Type& type);
+		void swapBR(unsigned char* pixels, const int w, const int h, const int d, const Type& type);
+		void transpose(unsigned char* pixels, const int w, const int h, const int d, const Type& type);
 
 		// codecs per filetype:
 		void readBmp(std::string filename, unsigned char** pixels, int& w, int& h, int& d, Type& type);
@@ -64,7 +65,7 @@ namespace ImageCodecs
 		inline int cols() { return w_; }
 		inline unsigned char** data() { return &pixels_; }
 		inline bool empty() { return h_ == 0 || w_ == 0 || d_ == 0 || pixels_ == nullptr; }
-		inline void flip() { flipImage(pixels_, w_, h_, d_); }
+		inline void flip() { flip(pixels_, w_, h_, d_, type_); }
 		// row-major index access for contiguous array of pixel data.
 		template <typename T>
 		inline T idx(int i, int j, int k)
@@ -82,7 +83,7 @@ namespace ImageCodecs
 		}
 		void read(std::string filepath);
 		inline int rows() { return h_; }
-		inline void swapBR(){swapBR(pixels_, w_, h_, d_);}
+		inline void swapBR(){swapBR(pixels_, w_, h_, d_, type_);}
 		inline Type type() { return type_; }
 		void write(std::string filepath);
 		~Image(){delete[] pixels_;}

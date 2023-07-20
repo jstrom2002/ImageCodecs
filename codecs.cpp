@@ -23,19 +23,21 @@ extern "C" {
 }
 
 #define TINYEXR_IMPLEMENTATION
+#define TINYEXR_USE_MINIZ 1
 #include "tinyexr.h"
 
 // required libs
 #pragma comment(lib, "jpeg.lib")
 #pragma comment(lib, "lzma.lib")
-#ifdef _DEBUG
-#pragma comment(lib, "zlibd.lib")
-#pragma comment(lib, "libpng16d.lib")
-#pragma comment(lib, "tiffd.lib")
-#else
+#pragma comment(lib, "miniz.lib")
+#ifdef NDEBUG
 #pragma comment(lib, "zlib.lib")
 #pragma comment(lib, "libpng16.lib")
 #pragma comment(lib, "tiff.lib")
+#else
+#pragma comment(lib, "zlibd.lib")
+#pragma comment(lib, "libpng16d.lib")
+#pragma comment(lib, "tiffd.lib")
 #endif
 
 #include <libpng16/png.h>
@@ -113,22 +115,31 @@ namespace ImageCodecs
 		}
 	}
 
-	void Image::transpose(unsigned char* pixels, const int w, const int h, const int d)
+	void Image::transpose(unsigned char* pixels, const int w, const int h, const int d, const Type& type)
 	{
-		unsigned char* flipped = new unsigned char[w * h * d];
+		unsigned int byteSize = (type == Type::FLOAT ? FLOAT_SIZE : 1);
+		unsigned char* tempPix = new unsigned char[w * h * d * byteSize];
 
 		// Copy pixels in reverse order.
 		for (unsigned int i = 0; i < h; ++i)
 		{
 			for (unsigned int j = 0; j < w; ++j)
 			{
-				for (unsigned int k = 0; k < d; ++k)
+				for (unsigned int k = 0; k < d * byteSize; k += byteSize)
 				{
-					unsigned int r = i * w * d;
-					unsigned int c = j * d;
-					unsigned int r2 = j * h * d;
-					unsigned int c2 = i * d;
-					flipped[r + c + k] = pixels[r2 + c2 + k];
+					unsigned int r = i * w * d * byteSize;
+					unsigned int c = j * d * byteSize;
+					unsigned int r2 = j * h * d * byteSize;
+					unsigned int c2 = i * d * byteSize;
+
+					if (type == Type::FLOAT)
+					{
+						memcpy(&tempPix[r + c + k], &pixels[r2 + c2 + k], FLOAT_SIZE);
+					}
+					else
+					{
+						tempPix[r + c + k] = pixels[r2 + c2 + k];
+					}
 				}
 			}
 		}
@@ -136,27 +147,36 @@ namespace ImageCodecs
 		// Now copy back over to original array.
 		for (unsigned int i = 0; i < w * h * d; ++i)
 		{
-			pixels[i] = flipped[i];
+			pixels[i] = tempPix[i];
 		}
-		delete[] flipped;
+		delete[] tempPix;
 	}
 
 
-	void Image::flip(unsigned char* pixels, const int w, const int h, const int d)
+	void Image::flip(unsigned char* pixels, const int w, const int h, const int d, const Type& type)
 	{
-		unsigned char* flipped = new unsigned char[w * h * d];
+		unsigned int byteSize = (type == Type::FLOAT ? FLOAT_SIZE : 1);
+		unsigned char* tempPix = new unsigned char[w * h * d * byteSize];
 
 		// Copy pixels in reverse order.
 		for (unsigned int i = 0; i < h; ++i)
 		{
 			for (unsigned int j = 0; j < w; ++j)
 			{
-				for (unsigned int k = 0; k < d; ++k)
+				for (unsigned int k = 0; k < d * byteSize; k += byteSize)
 				{
-					unsigned int r = i * w * d;
-					unsigned int r_inv = (h - 1 - i) * w * d;
-					unsigned int c = j * d;
-					flipped[r + c + k] = pixels[r_inv + c + k];
+					unsigned int r = i * w * d * byteSize;
+					unsigned int r_inv = (h - 1 - i) * w * d * byteSize;
+					unsigned int c = j * d * byteSize;
+
+					if (type == Type::FLOAT)
+					{
+						memcpy(&tempPix[r + c + k], &pixels[r_inv + c + k], FLOAT_SIZE);
+					}
+					else
+					{
+						tempPix[r + c + k] = pixels[r_inv + c + k];
+					}
 				}
 			}
 		}
@@ -164,34 +184,53 @@ namespace ImageCodecs
 		// Now copy back over to original array.
 		for (unsigned int i = 0; i < w * h * d; ++i)
 		{
-			pixels[i] = flipped[i];
+			pixels[i] = tempPix[i];
 		}
-		delete[] flipped;
+		delete[] tempPix;
 	}
 
-	void Image::swapBR(unsigned char* pixels, const int w, const int h, const int d)
+	void Image::swapBR(unsigned char* pixels, const int w, const int h, const int d, const Type& type)
 	{
-		unsigned char* flipped = new unsigned char[w * h * d];
+		unsigned int byteSize = (type == Type::FLOAT ? FLOAT_SIZE : 1);
+		unsigned char* tempPix = new unsigned char[w * h * d * byteSize];
 
 		// Copy pixels in reverse order.
 		for (unsigned int i = 0; i < h; ++i)
 		{
 			for (unsigned int j = 0; j < w; ++j)
 			{
-				for (unsigned int k = 0; k < d; ++k)
+				for (unsigned int k = 0; k < d * byteSize; k += byteSize)
 				{
-					unsigned int r = i * w * d;
-					unsigned int c = j * d;
-					if (k == 0)
+					unsigned int r = i * w * d * byteSize;
+					unsigned int c = j * d * byteSize;
+
+					if (type == Type::FLOAT)
 					{
-						flipped[r + c + 0] = pixels[r + c + 2];
+						if (k == 0)
+						{
+							memcpy(&tempPix[r + c + 0], &pixels[r + c + 2], FLOAT_SIZE);
+						}
+						else if (k == 2)
+						{
+							memcpy(&tempPix[r + c + 2], &pixels[r + c + 0], FLOAT_SIZE);
+						}
+						else {
+							memcpy(&tempPix[r + c + k], &pixels[r + c + k], FLOAT_SIZE);
+						}
 					}
-					else if (k == 2)
+					else
 					{
-						flipped[r + c + 2] = pixels[r + c + 0];
-					}
-					else {
-						flipped[r + c + k] = pixels[r + c + k];
+						if (k == 0)
+						{
+							tempPix[r + c + 0] = pixels[r + c + 2];
+						}
+						else if (k == 2)
+						{
+							tempPix[r + c + 2] = pixels[r + c + 0];
+						}
+						else {
+							tempPix[r + c + k] = pixels[r + c + k];
+						}
 					}
 				}
 			}
@@ -200,9 +239,9 @@ namespace ImageCodecs
 		// Now copy back over to original array.
 		for (unsigned int i = 0; i < w * h * d; ++i)
 		{
-			pixels[i] = flipped[i];
+			pixels[i] = tempPix[i];
 		}
-		delete[] flipped;
+		delete[] tempPix;
 	}
 
 	// Adapted from: https://github.com/marc-q/libbmp/blob/master/CPP/libbmp.cpp
@@ -376,7 +415,7 @@ namespace ImageCodecs
 			memcpy(*pixels, image, w*h*d);
 		}
 
-		flip(*pixels, w, h, d);
+		flip(*pixels, w, h, d, type);
 
 		surf.clear();
 		image.clear();		
@@ -419,9 +458,10 @@ namespace ImageCodecs
 		loadedData.clear();
 		if (!ret)
 		{
-			d = 4;
-			*pixels = new unsigned char[w * h * 4 * sizeof(float)];
-			memcpy(*pixels, floatPixels, w * h * 4 * sizeof(float));
+			d = 4; // assume RGBA float data
+			unsigned int sz = w * h * d * FLOAT_SIZE;
+			*pixels = new unsigned char[sz];
+			memcpy(*pixels, floatPixels, sz);
 		}
 		else
 		{
@@ -435,8 +475,14 @@ namespace ImageCodecs
 
 	void Image::writeExr(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type)
 	{
-		// TO DO: finish
-		//auto ret = SaveEXRImageToFile(&exr_image, &exr_header, outfilename, &err);
+		const char* err = "\0";
+		float* float_pixels = new float[w * h * d];
+		memcpy(float_pixels, pixels, w * h * d * FLOAT_SIZE);
+		auto ret = SaveEXR(float_pixels, w, h, d, false, filename.c_str(), &err);
+		if (ret)
+		{
+			std::cerr << err << std::endl;
+		}
 	}
 
 	void Image::readGif(std::string filename, unsigned char** pixels, int& w, int& h, int& d, Type& type)
@@ -446,12 +492,6 @@ namespace ImageCodecs
 	{
 	}
 
-	void Image::writeHdr(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type)
-	{
-		// TO DO: finish
-	}
-
-
 	typedef unsigned char RGBE[4];
 #define R			0
 #define G			1
@@ -460,6 +500,12 @@ namespace ImageCodecs
 
 #define  MINELEN	8				// minimum scanline length for encoding
 #define  MAXELEN	0x7fff			// maximum scanline length for encoding
+	int invConvertComponent(int expo, float val)
+	{
+		float d = (float)pow(0.5f, float(expo));
+		return unsigned char(val * 256.0f * d);
+	}
+
 	float convertComponent(int expo, int val)
 	{
 		float v = val / 256.0f;
@@ -474,7 +520,8 @@ namespace ImageCodecs
 			cols[0] = convertComponent(expo, scan[0][R]);
 			cols[1] = convertComponent(expo, scan[0][G]);
 			cols[2] = convertComponent(expo, scan[0][B]);
-			cols += 3;
+			cols[3] = float(scan[0][E]);
+			cols += 4;
 			scan++;
 		}
 	}
@@ -557,8 +604,6 @@ namespace ImageCodecs
 
 	void Image::readHdr(std::string filepath, unsigned char** pixels, int& w_, int& h_, int& d_, Type& type)
 	{
-		d_ = 3; // All .hdr files are RGB
-
 		int i;
 		char str[200];
 		FILE* file;
@@ -603,7 +648,8 @@ namespace ImageCodecs
 
 		w_ = w;
 		h_ = h;
-		float* floatPixels = new float[w * h * 3];
+		d_ = 4; // All .hdr files are 4-channel RGBE data w/ alpha component == exposure
+		float* floatPixels = new float[w * h * d_];
 
 		RGBE* scanline = new RGBE[w];
 		if (!scanline) {
@@ -613,20 +659,62 @@ namespace ImageCodecs
 
 		// convert image and copy over float data.
 		type = Type::FLOAT;
-		*pixels = new unsigned char[w * h * 3 * sizeof(float)];
+		*pixels = new unsigned char[w * h * d_ * FLOAT_SIZE];
 		unsigned int lineCount = 0;
 		for (int y = h - 1; y >= 0; y--) {
 			if (decrunchHDR(scanline, w, file) == false)
 				break;
 			workOnRGBE(scanline, w, floatPixels);
-			memcpy(*pixels + lineCount, floatPixels, w * 3 * sizeof(float));
-			floatPixels += w * 3;
-			lineCount += w * 3 * sizeof(float);
+			memcpy(*pixels + lineCount, floatPixels, w * d_ * FLOAT_SIZE);
+			floatPixels += w * d_;
+			lineCount += w * d_ * FLOAT_SIZE;
 		}
 		
 		// Cleanup.
 		delete[] scanline;
 		fclose(file);
+	}
+
+	void Image::writeHdr(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type)
+	{
+		if (d != 4)
+		{
+			throw std::exception("HDR data must contain a 4th channel of exposure values");
+		}
+
+		std::ofstream ofile(filename.c_str(), std::ios::out | std::ios::binary);
+		if (!ofile.is_open())
+			throw std::exception("Cannot open output file.");
+
+		// Write hdr header.
+		ofile << "#?RADIANCE" << char(0x0A) << "SOFTWARE=GEGL" << char(0x0A) << "FORMAT=32-bit_rle_rgbe" << char(0x0A) << char(0x0A) << "-Y " << std::to_string(h) << " +X " << std::to_string(w) << char(0x0A);
+
+		unsigned int counter = 0;
+		float px;
+		float expo2;
+		for (unsigned int i = 0; i < w * h; ++i) // assumes size of float == 4 bytes
+		{
+			memcpy(&expo2, &pixels[counter+(3 * FLOAT_SIZE)], FLOAT_SIZE);
+			int expo = int(expo2) - 128;
+			for (unsigned int j = 0; j < d; ++j)
+			{
+				if (j == 3) // Save exposure float
+				{
+					ofile << unsigned char(expo+128);
+				}
+				else // For RGB data, convert back to linear value and write to file.
+				{
+					px = 0.0f;
+					memcpy(&px, &pixels[counter], FLOAT_SIZE);
+					ofile << (unsigned char)invConvertComponent(px,expo);
+					
+				}
+				counter+=4; // assumes size of float == 4 bytess
+			}
+		}
+
+		ofile.flush();
+		ofile.close();
 	}
 
 	void Image::readJpg(std::string filename, unsigned char** pixels, int& w, int& h, int& d, Type& type)
@@ -827,7 +915,7 @@ namespace ImageCodecs
 		*pixels = new unsigned char[w * h * d];
 		memcpy(*pixels, img_data, w*h*d);
 
-		flip(*pixels, w, h, d);
+		flip(*pixels, w, h, d, type);
 	}
 
 	void Image::writePng(std::string filepath, unsigned char* pixels, int& w, int& h, int& d, Type& type)
@@ -853,7 +941,8 @@ namespace ImageCodecs
 		h = info.height();
 		d = info.channel();
 		unsigned int sz = sizeof(unsigned char);
-		if (filepath.find(".pfm") != std::string::npos) // .pfm files contain float data
+		bool isPfm = filepath.find(".pfm") != std::string::npos;
+		if (isPfm) // .pfm files contain float data
 		{
 			type = Type::FLOAT;
 			sz = 4; // assumes float size is 4 bytes
@@ -896,6 +985,11 @@ namespace ImageCodecs
 		else
 		{
 			memcpy(*pixels, data.data(), w * h * d * sz);
+		}
+
+		if (isPfm)
+		{
+			flip(*pixels, w, h, d, type);
 		}
     }
 
@@ -1199,7 +1293,7 @@ namespace ImageCodecs
 			d = PixelSize;
 			w = Head.Width;
 			h = Head.Height;
-			flip(*pixels, w, h, d); // for some reason, this code loads the .tga data upside down
+			flip(*pixels, w, h, d, type); // for some reason, this code loads the .tga data upside down
 		}
 		delete[] ColorMap;
 		delete[] Descriptor;
