@@ -30,6 +30,7 @@ extern "C" {
 #pragma comment(lib, "jpeg.lib")
 #pragma comment(lib, "lzma.lib")
 #pragma comment(lib, "miniz.lib")
+#pragma comment(lib, "libwebp.lib")
 #ifdef NDEBUG
 #pragma comment(lib, "zlib.lib")
 #pragma comment(lib, "libpng16.lib")
@@ -41,6 +42,9 @@ extern "C" {
 #endif
 
 #include <libpng16/png.h>
+
+#include <webp/encode.h>
+#include <webp/decode.h>
 
 namespace ImageCodecs
 {
@@ -117,20 +121,20 @@ namespace ImageCodecs
 
 	void Image::transpose(unsigned char* pixels, const int w, const int h, const int d, const Type& type)
 	{
-		unsigned int byteSize = (type == Type::FLOAT ? FLOAT_SIZE : 1);
-		unsigned char* tempPix = new unsigned char[w * h * d * byteSize];
+		unsigned int byteSz = byteSize(type);
+		unsigned char* tempPix = new unsigned char[totalBytes()];
 
 		// Copy pixels in reverse order.
 		for (unsigned int i = 0; i < h; ++i)
 		{
 			for (unsigned int j = 0; j < w; ++j)
 			{
-				for (unsigned int k = 0; k < d * byteSize; k += byteSize)
+				for (unsigned int k = 0; k < d * byteSz; k += byteSz)
 				{
-					unsigned int r = i * w * d * byteSize;
-					unsigned int c = j * d * byteSize;
-					unsigned int r2 = j * h * d * byteSize;
-					unsigned int c2 = i * d * byteSize;
+					unsigned int r = i * w * d * byteSz;
+					unsigned int c = j * d * byteSz;
+					unsigned int r2 = j * h * d * byteSz;
+					unsigned int c2 = i * d * byteSz;
 
 					if (type == Type::FLOAT)
 					{
@@ -145,7 +149,7 @@ namespace ImageCodecs
 		}
 
 		// Now copy back over to original array.
-		for (unsigned int i = 0; i < w * h * d; ++i)
+		for (unsigned int i = 0; i < totalBytes(); ++i)
 		{
 			pixels[i] = tempPix[i];
 		}
@@ -155,19 +159,19 @@ namespace ImageCodecs
 
 	void Image::flip(unsigned char* pixels, const int w, const int h, const int d, const Type& type)
 	{
-		unsigned int byteSize = (type == Type::FLOAT ? FLOAT_SIZE : 1);
-		unsigned char* tempPix = new unsigned char[w * h * d * byteSize];
+		auto byteSz = byteSize();
+		unsigned char* tempPix = new unsigned char[totalBytes()];
 
 		// Copy pixels in reverse order.
 		for (unsigned int i = 0; i < h; ++i)
 		{
 			for (unsigned int j = 0; j < w; ++j)
 			{
-				for (unsigned int k = 0; k < d * byteSize; k += byteSize)
+				for (unsigned int k = 0; k < d * byteSz; k += byteSz)
 				{
-					unsigned int r = i * w * d * byteSize;
-					unsigned int r_inv = (h - 1 - i) * w * d * byteSize;
-					unsigned int c = j * d * byteSize;
+					unsigned int r = i * w * d * byteSz;
+					unsigned int r_inv = (h - 1 - i) * w * d * byteSz;
+					unsigned int c = j * d * byteSz;
 
 					if (type == Type::FLOAT)
 					{
@@ -182,7 +186,7 @@ namespace ImageCodecs
 		}
 
 		// Now copy back over to original array.
-		for (unsigned int i = 0; i < w * h * d; ++i)
+		for (unsigned int i = 0; i < totalBytes(); ++i)
 		{
 			pixels[i] = tempPix[i];
 		}
@@ -191,18 +195,18 @@ namespace ImageCodecs
 
 	void Image::swapBR(unsigned char* pixels, const int w, const int h, const int d, const Type& type)
 	{
-		unsigned int byteSize = (type == Type::FLOAT ? FLOAT_SIZE : 1);
-		unsigned char* tempPix = new unsigned char[w * h * d * byteSize];
+		unsigned int byteSz = byteSize(type);
+		unsigned char* tempPix = new unsigned char[totalBytes()];
 
 		// Copy pixels in reverse order.
 		for (unsigned int i = 0; i < h; ++i)
 		{
 			for (unsigned int j = 0; j < w; ++j)
 			{
-				for (unsigned int k = 0; k < d * byteSize; k += byteSize)
+				for (unsigned int k = 0; k < d * byteSz; k += byteSz)
 				{
-					unsigned int r = i * w * d * byteSize;
-					unsigned int c = j * d * byteSize;
+					unsigned int r = i * w * d * byteSz;
+					unsigned int c = j * d * byteSz;
 
 					if (type == Type::FLOAT)
 					{
@@ -237,7 +241,7 @@ namespace ImageCodecs
 		}
 
 		// Now copy back over to original array.
-		for (unsigned int i = 0; i < w * h * d; ++i)
+		for (unsigned int i = 0; i < totalBytes(); ++i)
 		{
 			pixels[i] = tempPix[i];
 		}
@@ -372,7 +376,7 @@ namespace ImageCodecs
 	{
 		nv_dds::CDDSImage image;
 		nv_dds::CSurface surf;
-		int totalBytes = 0;
+		int totalBytes_ = 0;
 		try
 		{
 			image.load(filepath, true);
@@ -385,14 +389,14 @@ namespace ImageCodecs
 		w = image.get_width();
 		h = image.get_height();
 		d = image.get_components();
-		totalBytes = image.get_size();
+		totalBytes_ = image.get_size();
 
 		if (image.get_num_mipmaps() > 1) {
 			surf = image.get_mipmap(0);
 			w = surf.get_width();
 			h = surf.get_height();
 			d = surf.get_depth();
-			totalBytes = surf.get_size();			
+			totalBytes_ = surf.get_size();
 		}
 
 		switch (image.get_type()) {
@@ -404,15 +408,27 @@ namespace ImageCodecs
 			throw std::exception("Cannot handle .dds 3D textures");
 		}
 
-		*pixels = new unsigned char[w*h*d];
+		if (totalBytes_ / (w * h * d) != 1)
+		{
+			if (totalBytes_ / (w * h * d) == 4)
+			{
+				type = Type::FLOAT;
+			}
+			else if (totalBytes_ / (w * h * d) == 2)
+			{
+				type = Type::USHORT;
+			}
+		}
+
+		*pixels = new unsigned char[totalBytes()];
 		unsigned int byte_counter = 0;		
 		if (image.get_num_mipmaps() > 1) 
 		{
-			memcpy(*pixels, surf, w*h*d);
+			memcpy(*pixels, surf, totalBytes());
 		}
 		else
 		{			
-			memcpy(*pixels, image, w*h*d);
+			memcpy(*pixels, image, totalBytes());
 		}
 
 		flip(*pixels, w, h, d, type);
@@ -423,7 +439,7 @@ namespace ImageCodecs
 	void Image::writeDds(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type)
 	{
 		nv_dds::CTexture img;
-		img.create(w,h,1,w*h*d,pixels);	
+		img.create(w,h,1,totalBytes(),pixels);	
 		nv_dds::CDDSImage ddsimage;		
 		unsigned int fmt = 0;
 		switch (d) {
@@ -458,8 +474,9 @@ namespace ImageCodecs
 		loadedData.clear();
 		if (!ret)
 		{
+			type = Type::FLOAT;
 			d = 4; // assume RGBA float data
-			unsigned int sz = w * h * d * FLOAT_SIZE;
+			unsigned int sz = totalBytes();
 			*pixels = new unsigned char[sz];
 			memcpy(*pixels, floatPixels, sz);
 		}
@@ -487,9 +504,12 @@ namespace ImageCodecs
 
 	void Image::readGif(std::string filename, unsigned char** pixels, int& w, int& h, int& d, Type& type)
 	{
+		// TO DO: FINISH
 	}
+
 	void Image::writeGif(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type)
 	{
+		// TO DO: FINISH
 	}
 
 	typedef unsigned char RGBE[4];
@@ -659,7 +679,7 @@ namespace ImageCodecs
 
 		// convert image and copy over float data.
 		type = Type::FLOAT;
-		*pixels = new unsigned char[w * h * d_ * FLOAT_SIZE];
+		*pixels = new unsigned char[totalBytes()];
 		unsigned int lineCount = 0;
 		for (int y = h - 1; y >= 0; y--) {
 			if (decrunchHDR(scanline, w, file) == false)
@@ -739,8 +759,8 @@ namespace ImageCodecs
 		d = 3;
 		w = njGetWidth();
 		h = njGetHeight();
-		*pixels = new unsigned char[w * h * d];
-		memcpy(*pixels, njGetImage(), w*h*d);
+		*pixels = new unsigned char[totalBytes()];
+		memcpy(*pixels, njGetImage(), totalBytes());
 
 		// Cleanup.
 		delete[] temparr;
@@ -912,8 +932,8 @@ namespace ImageCodecs
 		d = 4; // Forced channel number to RGBA == 4.
 
 		delete[] Data;
-		*pixels = new unsigned char[w * h * d];
-		memcpy(*pixels, img_data, w*h*d);
+		*pixels = new unsigned char[totalBytes()];
+		memcpy(*pixels, img_data, totalBytes());
 
 		flip(*pixels, w, h, d, type);
 	}
@@ -940,14 +960,12 @@ namespace ImageCodecs
 		w = info.width();
 		h = info.height();
 		d = info.channel();
-		unsigned int sz = sizeof(unsigned char);
 		bool isPfm = filepath.find(".pfm") != std::string::npos;
 		if (isPfm) // .pfm files contain float data
 		{
 			type = Type::FLOAT;
-			sz = 4; // assumes float size is 4 bytes
 		}
-		*pixels = new unsigned char[w * h * d * sz];
+		*pixels = new unsigned char[totalBytes()];
 		if (filepath.find(".pbm") != std::string::npos && info.type() == PNM::P4) // .pbm P4 files are binary black/white, so extract 8 bits of pixel data per byte
 		{
 			int lastRowBits = w % 8;
@@ -984,7 +1002,7 @@ namespace ImageCodecs
 		}
 		else
 		{
-			memcpy(*pixels, data.data(), w * h * d * sz);
+			memcpy(*pixels, data.data(), totalBytes());
 		}
 
 		if (isPfm)
@@ -1046,13 +1064,13 @@ namespace ImageCodecs
 			}
 
 			outfile << (d == 3 ? "PF" : "Pf") << (char)0x0A << w << " " << h << (char)0x0A << "-1.0" << (char)0x0A;
-			outfile.write(reinterpret_cast<char*>(pixels), w * h * d * 4); // write binary
+			outfile.write(reinterpret_cast<char*>(pixels), totalBytes()); // write binary
 		}
 		else if (filepath.find(".pgm") != std::string::npos || filepath.find(".ppm") != std::string::npos || filepath.find(".pnm") != std::string::npos)
 		{
 			bool isPgm = filepath.find(".pgm") != std::string::npos;
 			outfile << (isPgm ? "P5" : "P6") << "\n" << w << " " << h << "\n" << 255 << "\n";
-			outfile.write(reinterpret_cast<char*>(pixels), w * h * d); // write binary
+			outfile.write(reinterpret_cast<char*>(pixels), totalBytes()); // write binary
 		}
 		else
 		{
@@ -1339,7 +1357,7 @@ namespace ImageCodecs
 		//TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &h);
 		//scanline = TIFFScanlineSize(tif);
 		//buf = (tdata_t*)_TIFFmalloc(scanline);
-		//*pixels = new unsigned char[w*h*d];
+		//*pixels = new unsigned char[totalSize()];
 		//unsigned int counter = 0;
 		//for (uintmax_t row = 0; row < h; row++)
 		//{
@@ -1394,9 +1412,173 @@ namespace ImageCodecs
     }
 
 	void Image::readWebp(std::string filename, unsigned char** pixels, int& w, int& h, int& d, Type& type)
-    {
+    {		
+		// Validate header.
+		std::ifstream ifile(filename, std::ios::in | std::ios::binary);
+		if (!ifile.is_open())
+		{
+			throw std::exception(("Could not open .webp file: " + filename).c_str());
+		}
+		std::vector<uint8_t> data;
+		while (ifile.good())
+		{
+			data.push_back((uint8_t)ifile.get());
+		}
+		auto sz = std::filesystem::file_size(filename);
+
+		// Read contents.
+		if (!WebPGetInfo(data.data(), sz, &w, &h))
+		{
+			throw std::exception("Could not parse .webp header");
+		}
+		*pixels = WebPDecodeRGBA(data.data(), sz, &w, &h);
+		d = 4; // in this setup, webp is RGBA by default
     }
+
+	typedef struct MetadataPayload {
+		uint8_t* bytes;
+		size_t size;
+	} MetadataPayload;
+
+	typedef struct Metadata {
+		MetadataPayload exif;
+		MetadataPayload iccp;
+		MetadataPayload xmp;
+	} Metadata;
+
+	static int WriteWebPWithMetadata(FILE* const out,
+		const WebPPicture* const picture,
+		const WebPMemoryWriter* const memory_writer,
+		const Metadata* const metadata,
+		int keep_metadata,
+		int* const metadata_written) {
+		const char kVP8XHeader[] = "VP8X\x0a\x00\x00\x00";
+		const int kAlphaFlag = 0x10;
+		const int kEXIFFlag = 0x08;
+		const int kICCPFlag = 0x20;
+		const int kXMPFlag = 0x04;
+		const size_t kRiffHeaderSize = 12;
+		const size_t kMaxChunkPayload = ~0 - kChunkHeaderSize - 1;
+		const size_t kMinSize = kRiffHeaderSize + kChunkHeaderSize;
+		uint32_t flags = 0;
+		uint64_t metadata_size = 0;
+		const int write_exif = UpdateFlagsAndSize(&metadata->exif,
+			!!(keep_metadata & METADATA_EXIF),
+			kEXIFFlag, &flags, &metadata_size);
+		const int write_iccp = UpdateFlagsAndSize(&metadata->iccp,
+			!!(keep_metadata & METADATA_ICC),
+			kICCPFlag, &flags, &metadata_size);
+		const int write_xmp = UpdateFlagsAndSize(&metadata->xmp,
+			!!(keep_metadata & METADATA_XMP),
+			kXMPFlag, &flags, &metadata_size);
+		uint8_t* webp = memory_writer->mem;
+		size_t webp_size = memory_writer->size;
+
+		*metadata_written = 0;
+
+		if (webp_size < kMinSize) return 0;
+		if (webp_size - kChunkHeaderSize + metadata_size > kMaxChunkPayload) {
+			fprintf(stderr, "Error! Addition of metadata would exceed "
+				"container size limit.\n");
+			return 0;
+		}
+
+		if (metadata_size > 0) {
+			const int kVP8XChunkSize = 18;
+			const int has_vp8x = !memcmp(webp + kRiffHeaderSize, "VP8X", kTagSize);
+			const uint32_t riff_size = (uint32_t)(webp_size - kChunkHeaderSize +
+				(has_vp8x ? 0 : kVP8XChunkSize) +
+				metadata_size);
+			// RIFF
+			int ok = (fwrite(webp, kTagSize, 1, out) == 1);
+			// RIFF size (file header size is not recorded)
+			ok = ok && WriteLE32(out, riff_size);
+			webp += kChunkHeaderSize;
+			webp_size -= kChunkHeaderSize;
+			// WEBP
+			ok = ok && (fwrite(webp, kTagSize, 1, out) == 1);
+			webp += kTagSize;
+			webp_size -= kTagSize;
+			if (has_vp8x) {  // update the existing VP8X flags
+				webp[kChunkHeaderSize] |= (uint8_t)(flags & 0xff);
+				ok = ok && (fwrite(webp, kVP8XChunkSize, 1, out) == 1);
+				webp += kVP8XChunkSize;
+				webp_size -= kVP8XChunkSize;
+			}
+			else {
+				const int is_lossless = !memcmp(webp, "VP8L", kTagSize);
+				if (is_lossless) {
+					// Presence of alpha is stored in the 37th bit (29th after the
+					// signature) of VP8L data.
+					if (webp[kChunkHeaderSize + 4] & (1 << 4)) flags |= kAlphaFlag;
+				}
+				ok = ok && (fwrite(kVP8XHeader, kChunkHeaderSize, 1, out) == 1);
+				ok = ok && WriteLE32(out, flags);
+				ok = ok && WriteLE24(out, picture->width - 1);
+				ok = ok && WriteLE24(out, picture->height - 1);
+			}
+			if (write_iccp) {
+				ok = ok && WriteMetadataChunk(out, "ICCP", &metadata->iccp);
+				*metadata_written |= METADATA_ICC;
+			}
+			// Image
+			ok = ok && (fwrite(webp, webp_size, 1, out) == 1);
+			if (write_exif) {
+				ok = ok && WriteMetadataChunk(out, "EXIF", &metadata->exif);
+				*metadata_written |= METADATA_EXIF;
+			}
+			if (write_xmp) {
+				ok = ok && WriteMetadataChunk(out, "XMP ", &metadata->xmp);
+				*metadata_written |= METADATA_XMP;
+			}
+			return ok;
+		}
+
+		// No metadata, just write the original image file.
+		return (fwrite(webp, webp_size, 1, out) == 1);
+	}
+
 	void Image::writeWebp(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type)
-    {
+    {	
+		WebPPicture pic;
+		WebPPictureInit(&pic);
+		pic.width = w;
+		pic.height = h;		
+		pic.argb_stride = w * d * byteSize();
+		WebPPictureImportRGBA(&pic,pixels,w*d*byteSize());
+		if (pic.error_code)
+		{
+			throw std::exception(("WebPEncode failed. Error code: " + std::to_string((int)pic.error_code)).c_str());
+		}
+
+		// Extract a configuration from the packed bits.
+		WebPConfig config;
+		WebPConfigInit(&config);
+		WebPConfigLosslessPreset(&config, 6);
+		if (!WebPValidateConfig(&config)) {
+			throw std::exception("Error! Invalid configuration.");
+		}
+
+
+		// Encode.
+		WebPMemoryWriter memory_writer;
+		WebPMemoryWriterInit(&memory_writer);		
+		pic.writer = WebPMemoryWrite;
+		pic.custom_ptr = &memory_writer;		
+		if (!WebPEncode(&config, &pic)) {
+			const WebPEncodingError error_code = pic.error_code;
+			WebPMemoryWriterClear(&memory_writer);
+			WebPPictureFree(&pic);
+			if (error_code == VP8_ENC_ERROR_OUT_OF_MEMORY ||
+				error_code == VP8_ENC_ERROR_BAD_WRITE) {
+				return;
+			}
+			throw std::exception(("WebPEncode failed. Error code: " + std::to_string((int)error_code)).c_str());
+		}
+
+		WriteWebPWithMetadata();
+
+		WebPMemoryWriterClear(&memory_writer);
+		WebPPictureFree(&pic);
     }
 }

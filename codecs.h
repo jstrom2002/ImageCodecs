@@ -9,11 +9,13 @@ namespace ImageCodecs
 	enum class Type
 	{
 		UBYTE,
+		USHORT,
 		FLOAT
 	};
 
 	class Image
 	{
+		const int USHORT_SIZE = 2; // this lib requires the size of all 'ushort' types == 2 bytes, else many decoders will not work.
 		const int FLOAT_SIZE = 4; // this lib requires the size of all 'float' types == 4 bytes, else many decoders will not work.
 		int h_ = 0;
 		int w_ = 0;
@@ -21,6 +23,15 @@ namespace ImageCodecs
 		unsigned char* pixels_ = nullptr;
 		Type type_ = Type::UBYTE;
 		
+		inline int byteSize(Type type)
+		{
+			if (type_ == Type::FLOAT)
+				return FLOAT_SIZE;
+			else if (type_ == Type::USHORT)
+				return USHORT_SIZE;
+			else
+				return 1;
+		}
 		void flip(unsigned char* pixels, const int w, const int h, const int d, const Type& type);
 		void swapBR(unsigned char* pixels, const int w, const int h, const int d, const Type& type);
 		void transpose(unsigned char* pixels, const int w, const int h, const int d, const Type& type);
@@ -61,6 +72,7 @@ namespace ImageCodecs
 		void writeWebp(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type);
 
 	public:
+		inline int byteSize() { return byteSize(type_); }
 		inline int channels() { return d_; }
 		inline int cols() { return w_; }
 		inline unsigned char** data() { return &pixels_; }
@@ -84,6 +96,7 @@ namespace ImageCodecs
 		void read(std::string filepath);
 		inline int rows() { return h_; }
 		inline void swapBR(){swapBR(pixels_, w_, h_, d_, type_);}
+		inline int totalBytes() { return w_ * h_ * d_ * byteSize(); }
 		inline Type type() { return type_; }
 		void write(std::string filepath);
 		~Image(){delete[] pixels_;}
