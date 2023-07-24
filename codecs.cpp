@@ -1446,6 +1446,60 @@ namespace ImageCodecs
 		MetadataPayload xmp;
 	} Metadata;
 
+	// Metadata writing.
+
+	enum {
+		METADATA_EXIF = (1 << 0),
+		METADATA_ICC = (1 << 1),
+		METADATA_XMP = (1 << 2),
+		METADATA_ALL = METADATA_EXIF | METADATA_ICC | METADATA_XMP
+	};
+
+	static const int kChunkHeaderSize = 8;
+	static const int kTagSize = 4;
+
+	// Sets 'flag' in 'vp8x_flags' and updates 'metadata_size' with the size of the
+	// chunk if there is metadata and 'keep' is true.
+	static int UpdateFlagsAndSize(const MetadataPayload* const payload,
+		int keep, int flag,
+		uint32_t* vp8x_flags, uint64_t* metadata_size) {
+		if (keep && payload->bytes != NULL && payload->size > 0) {
+			*vp8x_flags |= flag;
+			*metadata_size += kChunkHeaderSize + payload->size + (payload->size & 1);
+			return 1;
+		}
+		return 0;
+	}
+
+	// Outputs, in little endian, 'num' bytes from 'val' to 'out'.
+	static int WriteLE(FILE* const out, uint32_t val, int num) {
+		uint8_t buf[4];
+		int i;
+		for (i = 0; i < num; ++i) {
+			buf[i] = (uint8_t)(val & 0xff);
+			val >>= 8;
+		}
+		return (fwrite(buf, num, 1, out) == 1);
+	}
+
+	static int WriteLE24(FILE* const out, uint32_t val) {
+		return WriteLE(out, val, 3);
+	}
+
+	static int WriteLE32(FILE* const out, uint32_t val) {
+		return WriteLE(out, val, 4);
+	}
+
+	static int WriteMetadataChunk(FILE* const out, const char fourcc[4],
+		const MetadataPayload* const payload) {
+		const uint8_t zero = 0;
+		const size_t need_padding = payload->size & 1;
+		int ok = (fwrite(fourcc, kTagSize, 1, out) == 1);
+		ok = ok && WriteLE32(out, (uint32_t)payload->size);
+		ok = ok && (fwrite(payload->bytes, payload->size, 1, out) == 1);
+		return ok && (fwrite(&zero, need_padding, need_padding, out) == need_padding);
+	}
+
 	static int WriteWebPWithMetadata(FILE* const out,
 		const WebPPicture* const picture,
 		const WebPMemoryWriter* const memory_writer,
@@ -1538,6 +1592,7 @@ namespace ImageCodecs
 		return (fwrite(webp, webp_size, 1, out) == 1);
 	}
 
+
 	void Image::writeWebp(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type)
     {	
 		WebPPicture pic;
@@ -1576,9 +1631,17 @@ namespace ImageCodecs
 			throw std::exception(("WebPEncode failed. Error code: " + std::to_string((int)error_code)).c_str());
 		}
 
-		WriteWebPWithMetadata();
+		FILE* out = fopen(filename.c_str(), "wb");
+		Metadata metadata;
+		int metadata_written;
+
+		if (!WriteWebPWithMetadata(out, &pic, &memory_writer, &metadata,
+				false, &metadata_written)) {
+			throw std::exception("Error writing WebP file!\n");		
+		}
 
 		WebPMemoryWriterClear(&memory_writer);
 		WebPPictureFree(&pic);
+		fclose(out);
     }
 }
