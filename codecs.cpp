@@ -1013,69 +1013,69 @@ namespace ImageCodecs
 
     void Image::writePbm(std::string filepath, unsigned char* pixels, int& w, int& h, int& d, Type& type)
     {
-        std::ofstream outfile(filepath, std::ofstream::binary);
-        if (outfile.fail())
-        {
-            throw std::exception("Failed to write ");
-        }
+  //      std::ofstream outfile(filepath, std::ofstream::binary);
+  //      if (outfile.fail())
+  //      {
+  //          throw std::exception("Failed to write ");
+  //      }
 
-		if (filepath.find(".pbm") != std::string::npos)
-		{
-			outfile << "P4" << "\n" << w << " " << h << "\n";
+		//if (filepath.find(".pbm") != std::string::npos)
+		//{
+		//	outfile << "P4" << "\n" << w << " " << h << "\n";
 
-			int lastRowBits = w % 8;
-			unsigned int counter = 0;
-			bool endOfRow = false;
-			bool rowJustEnded = false;
-			while (counter < (w * h * d) + (h * lastRowBits))
-			{
-				unsigned char byteToWrite = 0;
-				for (unsigned int j = 0; j < 8; j++)
-				{
-					if (!rowJustEnded && counter > 0 && counter % w == 0) // skip padding bits in byte at end of row.
-					{
-						endOfRow = true;
-					}
-					else
-					{
-						rowJustEnded = false;
-					}
+		//	int lastRowBits = w % 8;
+		//	unsigned int counter = 0;
+		//	bool endOfRow = false;
+		//	bool rowJustEnded = false;
+		//	while (counter < (w * h * d) + (h * lastRowBits))
+		//	{
+		//		unsigned char byteToWrite = 0;
+		//		for (unsigned int j = 0; j < 8; j++)
+		//		{
+		//			if (!rowJustEnded && counter > 0 && counter % w == 0) // skip padding bits in byte at end of row.
+		//			{
+		//				endOfRow = true;
+		//			}
+		//			else
+		//			{
+		//				rowJustEnded = false;
+		//			}
 
-					if (endOfRow && j >= lastRowBits)
-					{
-						endOfRow = false;
-						rowJustEnded = true;
-						break;
-					}
-					
-					unsigned char px = (pixels[counter] > 0 ? 0x00 : 0x01);
-					byteToWrite |= (px << (7-j));
-					counter++;
-				}				
-				outfile << byteToWrite;
-				endOfRow = false;
-			}
-		}
-		else if (filepath.find(".pfm") != std::string::npos)
-		{
-			if (type != Type::FLOAT)
-			{
-				throw std::exception("Cannot write non-float data to .pfm");
-			}
+		//			if (endOfRow && j >= lastRowBits)
+		//			{
+		//				endOfRow = false;
+		//				rowJustEnded = true;
+		//				break;^
+		//			}
+		//			
+		//			unsigned char px = (pixels[counter] > 0 ? 0x00 : 0x01);
+		//			byteToWrite |= (px << (7-j));
+		//			counter++;
+		//		}				
+		//		outfile << byteToWrite;
+		//		endOfRow = false;
+		//	}
+		//}
+		//else if (filepath.find(".pfm") != std::string::npos)
+		//{
+		//	if (type != Type::FLOAT)
+		//	{
+		//		throw std::exception("Cannot write non-float data to .pfm");
+		//	}
 
-			outfile << (d == 3 ? "PF" : "Pf") << (char)0x0A << w << " " << h << (char)0x0A << "-1.0" << (char)0x0A;
-			outfile.write(reinterpret_cast<char*>(pixels), totalBytes()); // write binary
-		}
-		else if (filepath.find(".pgm") != std::string::npos || filepath.find(".ppm") != std::string::npos || filepath.find(".pnm") != std::string::npos)
-		{
-			bool isPgm = filepath.find(".pgm") != std::string::npos;
-			outfile << (isPgm ? "P5" : "P6") << "\n" << w << " " << h << "\n" << 255 << "\n";
-			outfile.write(reinterpret_cast<char*>(pixels), totalBytes()); // write binary
-		}
-		else
-		{
-			throw std::exception("Could not recognize netpbm format");
-		}
+		//	outfile << (d == 3 ? "PF" : "Pf") << (char)0x0A << w << " " << h << (char)0x0A << "-1.0" << (char)0x0A;
+		//	outfile.write(reinterpret_cast<char*>(pixels), totalBytes()); // write binary
+		//}
+		//else if (filepath.find(".pgm") != std::string::npos || filepath.find(".ppm") != std::string::npos || filepath.find(".pnm") != std::string::npos)
+		//{
+		//	bool isPgm = filepath.find(".pgm") != std::string::npos;
+		//	outfile << (isPgm ? "P5" : "P6") << "\n" << w << " " << h << "\n" << 255 << "\n";
+		//	outfile.write(reinterpret_cast<char*>(pixels), totalBytes()); // write binary
+		//}
+		//else
+		//{
+		//	throw std::exception("Could not recognize netpbm format");
+		//}
     }
 
 	template <typename Type>
@@ -1349,36 +1349,52 @@ namespace ImageCodecs
 
 	void Image::readTiff(std::string filename, unsigned char** pixels, int& w, int& h, int& d, Type& type)
     {
-		//TIFFSetWarningHandler(0);
-		//TIFF* tif = TIFFOpen(filename.c_str(), "r");
-		//tdata_t* buf;
-		//tsize_t scanline;
-		//TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &w);
-		//TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &h);
-		//scanline = TIFFScanlineSize(tif);
-		//buf = (tdata_t*)_TIFFmalloc(scanline);
-		//*pixels = new unsigned char[totalSize()];
-		//unsigned int counter = 0;
-		//for (uintmax_t row = 0; row < h; row++)
-		//{
-		//	int n = TIFFReadScanline(tif, buf, row, 0);
-		//	if (n == -1) {
-		//		printf("Error");
-		//		break;;
-		//	}
-		//	for (unsigned int i = 0; i < scanline; ++i)
-		//	{
-		//		auto c = unsigned char((uintmax_t)buf[i] / std::numeric_limits<uintmax_t>::max());
-		//		(*pixels)[counter] = c;
-		//		counter++;
-		//	}
-		//}
+		TIFF* tif = TIFFOpen(filename.c_str(), "r");
+		tdata_t* buf;
+		tsize_t scanline;
+		TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &w);
+		TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &h);
+		TIFFGetField(tif, TIFFTAG_SAMPLESPERPIXEL, &d);
+		int bitDepth = 0;
+		TIFFGetField(tif, TIFFTAG_BITSPERSAMPLE, &bitDepth);
+		if (bitDepth > 8)
+		{
+			switch (bitDepth)
+			{
+			case 16:
+				type = Type::USHORT;
+			case 32:
+				type = Type::FLOAT;
+			}
+		}
+		scanline = TIFFScanlineSize(tif);
+		buf = (tdata_t*)_TIFFmalloc(scanline);
+		*pixels = new unsigned char[totalBytes()];
+		unsigned int counter = 0;
+
+		// Iterate across every row of the image to get its scanline.
+		for (uintmax_t row = 0; row < h; row++)
+		{
+			int n = TIFFReadScanline(tif, buf, row, 0);
+			if (n == -1 || buf == nullptr) {
+				printf("Error");
+				break;
+			}
+
+			// Read each byte of the scanline.
+			for (unsigned int i = 0; i < scanline; ++i)
+			{
+				auto c = unsigned char(buf[i]);
+				std::cout << counter << ": " << (int)c << std::endl;
+				(*pixels)[counter] = c;
+				counter++;
+			}
+		}
+		_TIFFfree(buf);
 	}
 	void Image::writeTiff(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type)
     {
-		//// TO DO: finish debugging
-
-		//TIFF* image = TIFFOpen("test\\test_icdTest.tif","w"); //filename.c_str(), "w");
+		//TIFF* image = TIFFOpen("test\\test_icdTest.tif","w");
 		//TIFFSetField(image, TIFFTAG_IMAGEWIDTH, w);
 		//TIFFSetField(image, TIFFTAG_IMAGELENGTH, h);
 		//TIFFSetField(image, TIFFTAG_BITSPERSAMPLE, 32);
