@@ -22,7 +22,7 @@
 #include <fstream>
 #include <string>
 
-//#define _DISPLAY_RESULTS
+//#define _DISPLAY_RESULTS // <-- uncomment to display images in window to manually verify appearance
 
 
 int main(int argc, char** argv)
@@ -75,11 +75,16 @@ int main(int argc, char** argv)
 					}
 				}
 				cv::Mat displayImg = cv::Mat::zeros(img.rows(), img.cols(), typ);
-				memcpy(displayImg.data, (*img.data()), img.cols() * img.rows() * img.channels());
+				memcpy(displayImg.data, *img.data(), img.cols() * img.rows() * img.channels() * (img.type() == ImageCodecs::Type::FLOAT ? 4 : 1));
 				if (img.type() == ImageCodecs::Type::FLOAT)
 				{
-					auto mn = cv::mean(displayImg);
-					std::cout << "mean: " << mn << std::endl;
+					if (displayImg.channels() != 3)
+					{
+						if (displayImg.channels() == 1)
+							cv::cvtColor(displayImg, displayImg, cv::COLOR_GRAY2RGB);
+						else if (displayImg.channels() == 4)
+							cv::cvtColor(displayImg, displayImg, cv::COLOR_RGBA2RGB);
+					}
 					displayImg.convertTo(displayImg, CV_8UC3, 255.0);
 				}
 				cv::imshow(testFile.path().extension().string(), displayImg);
@@ -94,6 +99,25 @@ int main(int argc, char** argv)
 			auto ext = testFile.path().extension().string();
 			newName = "test\\" + newName.substr(0, newName.rfind(".")) + "_icdTest" + ext;
 			img.write(newName);
+		}
+		catch (std::exception& e)
+		{
+			std::cerr << e.what() << std::endl;
+		}
+	}
+
+
+
+	// Now try to 'read' all the newly written test files.
+	for (auto& testFile : std::filesystem::recursive_directory_iterator("test"))
+	{
+		try
+		{
+			ImageCodecs::Image img;
+
+			// Test .read()
+			std::cout << "reading from disk: " << testFile.path().string() << std::endl;
+			img.read(testFile.path().string());
 		}
 		catch (std::exception& e)
 		{

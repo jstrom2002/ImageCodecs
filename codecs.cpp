@@ -1350,8 +1350,8 @@ namespace ImageCodecs
 	void Image::readTiff(std::string filename, unsigned char** pixels, int& w, int& h, int& d, Type& type)
     {
 		TIFF* tif = TIFFOpen(filename.c_str(), "r");
-		tdata_t* buf;
-		tsize_t scanline;
+		uint32_t* buf;
+		tsize_t scanlineSz;
 		TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &w);
 		TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &h);
 		TIFFGetField(tif, TIFFTAG_SAMPLESPERPIXEL, &d);
@@ -1367,65 +1367,61 @@ namespace ImageCodecs
 				type = Type::FLOAT;
 			}
 		}
-		scanline = TIFFScanlineSize(tif);
-		buf = (tdata_t*)_TIFFmalloc(scanline);
 		*pixels = new unsigned char[totalBytes()];
+
+		scanlineSz = TIFFScanlineSize(tif);
+		buf = new uint32_t[w*h];//(tdata_t*)_TIFFmalloc(scanlineSz);
+		if (!TIFFReadRGBAImage(tif, (uint32_t)w, (uint32_t)h, (uint32_t*)buf, 1))
+		{
+			std::cerr << "Error reading .tiff file" << std::endl;
+			throw std::exception("Error reading .tff file");
+		}
 		unsigned int counter = 0;
 
-		// Iterate across every row of the image to get its scanline.
-		for (uintmax_t row = 0; row < h; row++)
+		for (unsigned int i = 0; i < w * h; ++i)
 		{
-			int n = TIFFReadScanline(tif, buf, row, 0);
-			if (n == -1 || buf == nullptr) {
-				printf("Error");
-				break;
-			}
-
-			// Read each byte of the scanline.
-			for (unsigned int i = 0; i < scanline; ++i)
+			uint32_t currPix = (uint32_t)buf[i];
+			for (unsigned int j = 0; j < d; ++j)
 			{
-				auto c = unsigned char(buf[i]);
-				std::cout << counter << ": " << (int)c << std::endl;
-				(*pixels)[counter] = c;
+				unsigned char currByte = unsigned char((currPix >> j) & 0xff);
+				(*pixels)[counter] = currByte;
 				counter++;
 			}
 		}
-		_TIFFfree(buf);
+
+		// Cleanup.
+		delete[] buf;
+		flip();
 	}
 	void Image::writeTiff(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type)
     {
-		//TIFF* image = TIFFOpen("test\\test_icdTest.tif","w");
-		//TIFFSetField(image, TIFFTAG_IMAGEWIDTH, w);
-		//TIFFSetField(image, TIFFTAG_IMAGELENGTH, h);
-		//TIFFSetField(image, TIFFTAG_BITSPERSAMPLE, 32);
-		//TIFFSetField(image, TIFFTAG_SAMPLESPERPIXEL, 1);
-		//TIFFSetField(image, TIFFTAG_ROWSPERSTRIP, 1);
-		//TIFFSetField(image, TIFFTAG_ORIENTATION, ORIENTATION_TOPLEFT);
-		//TIFFSetField(image, TIFFTAG_PLANARCONFIG, PLANARCONFIG_CONTIG);
-		//TIFFSetField(image, TIFFTAG_PHOTOMETRIC, PHOTOMETRIC_MINISBLACK);
-		//TIFFSetField(image, TIFFTAG_SAMPLEFORMAT, SAMPLEFORMAT_UINT);
-		//TIFFSetField(image, TIFFTAG_COMPRESSION, COMPRESSION_NONE);		
-		//unsigned char* scan_line = new unsigned char[w * d];
-		//for (int i = 0; i < h; i++) {
-		//	memcpy(scan_line, (void*)pixels[i * w], w * d);
-		//	TIFFWriteScanline(image, scan_line, i, 0);
-		//}
-		//
-		//size_t linebytes = d * w;
-		//unsigned char* buf = nullptr;
-		//if (TIFFScanlineSize(image) > linebytes)
-		//	buf = new unsigned char[linebytes];
-		//else
-		//	buf = new unsigned char[TIFFScanlineSize(image)];
-		//TIFFSetField(image, TIFFTAG_ROWSPERSTRIP, TIFFDefaultStripSize(image, w * d));
-		//for (uintmax_t row = 0; row < h; row++){
-		//	//memcpy(buf, &image[(h - row - 1) * linebytes], linebytes);    // check the index here, and figure out why not using h*linebytes
-		//	if (TIFFWriteScanline(image, buf, row, 0) < 0)
-		//		break;
-		//}
-		//TIFFClose(image);
-		//delete[] scan_line;
-    }
+		TIFF* tif = TIFFOpen("test\\test_icdTest.tif","w");
+		TIFFSetField(tif, TIFFTAG_IMAGEWIDTH, w);
+		TIFFSetField(tif, TIFFTAG_IMAGELENGTH, h);
+		TIFFSetField(tif, TIFFTAG_SAMPLESPERPIXEL, d);
+
+		switch (type)
+		{
+		case Type::FLOAT:
+			TIFFSetField(tif, TIFFTAG_BITSPERSAMPLE, 32);
+			break;
+		case Type::USHORT:
+			TIFFSetField(tif, TIFFTAG_BITSPERSAMPLE, 16);
+			break;
+		default:
+			TIFFSetField(tif, TIFFTAG_BITSPERSAMPLE, 8);
+			break;
+		}
+
+		TIFFSetField(tif, TIFFTAG_ROWSPERSTRIP, h);
+		TIFFSetField(tif, TIFFTAG_COMPRESSION, COMPRESSION_ADOBE_DEFLATE);
+		TIFFSetField(tif, TIFFTAG_PHOTOMETRIC, PHOTOMETRIC_RGB);
+		TIFFSetField(tif, TIFFTAG_FILLORDER, FILLORDER_MSB2LSB);
+		TIFFSetField(tif, TIFFTAG_PLANARCONFIG, PLANARCONFIG_CONTIG);
+
+		TIFFWriteEncodedStrip(tif, 0,const_cast<void*>(reinterpret_cast<const void*> (pixels)),tsize_t(totalBytes()));
+		TIFFClose(tif);
+	}
 
 	void Image::readWebp(std::string filename, unsigned char** pixels, int& w, int& h, int& d, Type& type)
     {		
