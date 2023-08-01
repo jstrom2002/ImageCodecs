@@ -6,12 +6,14 @@
 #include <filesystem>
 #include <iostream>
 
-#define NV_DDS_NO_GL_SUPPORT
-#include "nv_dds.h"
+#include "gif.h"
 
 #define TJE_IMPLEMENTATION
 #include "jpeg_enc.h"
 #include "jpeg_dec.h"
+
+#define NV_DDS_NO_GL_SUPPORT
+#include "nv_dds.h"
 
 #include "png.h"
 #include "png_encoder.h"
@@ -504,12 +506,91 @@ namespace ImageCodecs
 
 	void Image::readGif(std::string filename, unsigned char** pixels, int& w, int& h, int& d, Type& type)
 	{
-		// TO DO: FINISH
+		gif::gd_GIF* gif;
+		gif = gif::gd_open_gif(filename.c_str());
+		if (!gif) {
+			throw std::exception("Could not open gif file");
+		}
+
+		w = gif->width;
+		h = gif->height;
+		d = 3; // Assumes 3-channel RGB encoding of data, which is standard for .gif images.
+
+		uint8_t* frame = new uint8_t[totalBytes()];
+
+		switch (gif->depth)
+		{
+		case 16:
+			type = Type::USHORT;
+			break;
+		case 32:
+			type = Type::FLOAT;
+			break;
+		default:
+			type = Type::UBYTE;
+			break;
+		}
+
+		*pixels = new unsigned char[totalBytes()];
+		unsigned int counter = 0;
+
+		// Get only the first frame of the .gif file, although this could be called repeatedly to get all of them.
+		if (gd_get_frame(gif) == -1)
+			throw std::exception("Could not load .gif data");
+		gd_render_frame(gif, frame);
+		memcpy(*pixels, frame, totalBytes());		
 	}
 
 	void Image::writeGif(std::string filename, unsigned char* pixels, int& w, int& h, int& d, Type& type)
 	{
-		// TO DO: FINISH
+		gif::CGIF* pGIF;			
+		gif::CGIF_Config gConfig;    
+		memset(&gConfig, 0, sizeof(gif::CGIF_Config));
+		gif::CGIF_FrameConfig fConfig;
+		memset(&fConfig, 0, sizeof(gif::CGIF_FrameConfig));
+
+		// Assumes 3-channel RGB encoding of data.
+		uint8_t colTable[256*3]; // generate a 3 channel 8-bit global color palette for use.
+		unsigned int counter = 0;
+		for (unsigned int i = 0; i < 3; ++i)
+			for (unsigned int j = 0; j < 256; ++j)
+			{
+				colTable[counter] = j;
+				counter++;
+			}
+		gConfig.width = w;
+		gConfig.height = h;
+		gConfig.numGlobalPaletteEntries = 256;
+		gConfig.pGlobalPalette = colTable;
+		gConfig.path = filename.c_str();
+
+		// add frame to GIF
+		pGIF = cgif_newgif(&gConfig);	
+		uint8_t* px = new uint8_t[totalBytes()];
+		
+		// Organize pixel data so that each channel is written one-at-a-time.
+		counter = 0;
+		for(unsigned int k = 0; k < d; ++k)
+			for (unsigned int i = 0; i < h; ++i)
+				for (unsigned int j = 0; j < w; ++j)
+					for (unsigned int l = 0; l < byteSize(); ++l)
+					{
+						px[counter] = pixels[i * (w*d*byteSize()) + j * (d * byteSize()) + k * byteSize() + l];
+						counter++;
+					}
+
+		fConfig.pImageData = px;
+		fConfig.delay = 0;
+		auto err = cgif_addframe(pGIF, &fConfig);
+		if (err) // add a new frame to the GIF
+		{
+			delete[] px;			
+			throw std::exception(("Could not assign frame data. Code: " + std::to_string(err)).c_str());
+		}		
+
+		// close GIF and free allocated space
+		cgif_close(pGIF);
+		delete[] px;
 	}
 
 	typedef unsigned char RGBE[4];
