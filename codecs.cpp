@@ -1049,7 +1049,7 @@ namespace ImageCodecs
 		*pixels = new unsigned char[totalBytes()];
 		if (filepath.find(".pbm") != std::string::npos) // .pbm P4 files are binary black/white, so extract 8 bits of pixel data per byte
 		{
-			if (info.type() == PNM::P4) // binary pixel data in 1's and 0's
+			if (info.type() == PNM::P4 || info.type() == PNM::P1) // binary pixel data in 1's and 0's
 			{
 				int lastRowBits = w % 8;
 				unsigned int counter = 0;
@@ -1083,13 +1083,9 @@ namespace ImageCodecs
 					endOfRow = false;
 				}
 			}
-			else if (info.type() == PNM::P1) // binary ASCII
-			{
-				int sdf = 0;//DELETE THIS
-			}
 			else
 			{
-
+				throw std::exception("Error parsing type from .pbm file");
 			}
 		}
 		else
@@ -1105,69 +1101,69 @@ namespace ImageCodecs
 
     void Image::writePbm(std::string filepath, unsigned char* pixels, int& w, int& h, int& d, Type& type)
     {
-  //      std::ofstream outfile(filepath, std::ofstream::binary);
-  //      if (outfile.fail())
-  //      {
-  //          throw std::exception("Failed to write ");
-  //      }
+        std::ofstream outfile(filepath, std::ofstream::binary);
+        if (outfile.fail())
+        {
+            throw std::exception("Failed to write ");
+        }
 
-		//if (filepath.find(".pbm") != std::string::npos)
-		//{
-		//	outfile << "P4" << "\n" << w << " " << h << "\n";
+		if (filepath.find(".pbm") != std::string::npos)
+		{
+			outfile << "P4" << "\n" << w << " " << h << "\n";
 
-		//	int lastRowBits = w % 8;
-		//	unsigned int counter = 0;
-		//	bool endOfRow = false;
-		//	bool rowJustEnded = false;
-		//	while (counter < (w * h * d) + (h * lastRowBits))
-		//	{
-		//		unsigned char byteToWrite = 0;
-		//		for (unsigned int j = 0; j < 8; j++)
-		//		{
-		//			if (!rowJustEnded && counter > 0 && counter % w == 0) // skip padding bits in byte at end of row.
-		//			{
-		//				endOfRow = true;
-		//			}
-		//			else
-		//			{
-		//				rowJustEnded = false;
-		//			}
+			int lastRowBits = w % 8;
+			unsigned int counter = 0;
+			bool endOfRow = false;
+			bool rowJustEnded = false;
+			while (counter < (w * h * d) + (h * lastRowBits))
+			{
+				unsigned char byteToWrite = 0;
+				for (unsigned int j = 0; j < 8; j++)
+				{
+					if (!rowJustEnded && counter > 0 && counter % w == 0) // skip padding bits in byte at end of row.
+					{
+						endOfRow = true;
+					}
+					else
+					{
+						rowJustEnded = false;
+					}
 
-		//			if (endOfRow && j >= lastRowBits)
-		//			{
-		//				endOfRow = false;
-		//				rowJustEnded = true;
-		//				break;^
-		//			}
-		//			
-		//			unsigned char px = (pixels[counter] > 0 ? 0x00 : 0x01);
-		//			byteToWrite |= (px << (7-j));
-		//			counter++;
-		//		}				
-		//		outfile << byteToWrite;
-		//		endOfRow = false;
-		//	}
-		//}
-		//else if (filepath.find(".pfm") != std::string::npos)
-		//{
-		//	if (type != Type::FLOAT)
-		//	{
-		//		throw std::exception("Cannot write non-float data to .pfm");
-		//	}
+					if (endOfRow && j >= lastRowBits)
+					{
+						endOfRow = false;
+						rowJustEnded = true;
+						break;
+					}
+					
+					unsigned char px = (pixels[counter] > 0 ? 0x00 : 0x01);
+					byteToWrite |= (px << (7-j));
+					counter++;
+				}				
+				outfile << byteToWrite;
+				endOfRow = false;
+			}
+		}
+		else if (filepath.find(".pfm") != std::string::npos)
+		{
+			if (type != Type::FLOAT)
+			{
+				throw std::exception("Cannot write non-float data to .pfm");
+			}
 
-		//	outfile << (d == 3 ? "PF" : "Pf") << (char)0x0A << w << " " << h << (char)0x0A << "-1.0" << (char)0x0A;
-		//	outfile.write(reinterpret_cast<char*>(pixels), totalBytes()); // write binary
-		//}
-		//else if (filepath.find(".pgm") != std::string::npos || filepath.find(".ppm") != std::string::npos || filepath.find(".pnm") != std::string::npos)
-		//{
-		//	bool isPgm = filepath.find(".pgm") != std::string::npos;
-		//	outfile << (isPgm ? "P5" : "P6") << "\n" << w << " " << h << "\n" << 255 << "\n";
-		//	outfile.write(reinterpret_cast<char*>(pixels), totalBytes()); // write binary
-		//}
-		//else
-		//{
-		//	throw std::exception("Could not recognize netpbm format");
-		//}
+			outfile << (d == 3 ? "PF" : "Pf") << (char)0x0A << w << " " << h << (char)0x0A << "-1.0" << (char)0x0A;
+			outfile.write(reinterpret_cast<char*>(pixels), totalBytes()); // write binary
+		}
+		else if (filepath.find(".pgm") != std::string::npos || filepath.find(".ppm") != std::string::npos || filepath.find(".pnm") != std::string::npos)
+		{
+			bool isPgm = filepath.find(".pgm") != std::string::npos;
+			outfile << (isPgm ? "P5" : "P6") << "\n" << w << " " << h << "\n" << 255 << "\n";
+			outfile.write(reinterpret_cast<char*>(pixels), totalBytes()); // write binary
+		}
+		else
+		{
+			throw std::exception("Could not recognize netpbm format");
+		}
     }
 
 	template <typename Type>
