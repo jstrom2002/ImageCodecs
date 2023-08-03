@@ -1115,7 +1115,7 @@ namespace ImageCodecs
 			unsigned int counter = 0;
 			bool endOfRow = false;
 			bool rowJustEnded = false;
-			while (counter < (w * h * d) + (h * lastRowBits))
+			while (counter < totalBytes())
 			{
 				unsigned char byteToWrite = 0;
 				for (unsigned int j = 0; j < 8; j++)
